@@ -1,0 +1,1289 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
+<meta name="apple-mobile-web-app-title" content="Brenner">
+<meta name="theme-color" content="#0d1117">
+<link rel="manifest" href="manifest.json">
+<title>Brennersteuerung</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:#0d1117;color:#c9d1d9;font-family:'Courier New',monospace;overscroll-behavior:none}
+body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+
+.hdr{display:flex;justify-content:space-between;align-items:center;padding:8px 12px;background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:8px}
+.hdr-title{font-size:13px;font-weight:bold;letter-spacing:.1em;color:#e6edf3}
+.hdr-sub{font-size:10px;color:#8b949e;margin-top:1px}
+#badge{font-size:11px;padding:4px 10px;border-radius:12px;background:#161b22;border:1px solid #30363d;color:#8b949e;white-space:nowrap}
+
+#notif-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-radius:8px;margin-bottom:8px;font-size:12px;border:1px solid #30363d;background:#161b22}
+#notif-dot{width:8px;height:8px;border-radius:50%;background:#30363d;margin-right:6px;flex-shrink:0}
+#notif-txt{color:#8b949e;flex:1;font-size:11px}
+#notif-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer;font-family:'Courier New',monospace}
+
+#gps-bar{display:flex;justify-content:space-between;align-items:center;padding:6px 12px;background:#161b22;border:1px solid #30363d;border-radius:8px;margin-bottom:8px;font-size:11px;color:#8b949e;flex-wrap:wrap;gap:4px}
+#gps-left{display:flex;align-items:center;gap:6px}
+#gps-dot{width:8px;height:8px;border-radius:50%;background:#30363d;flex-shrink:0}
+
+/* 3x2 Instrument Grid */
+.instruments{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+.instr{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:7px 9px}
+.instr-lbl{font-size:9px;color:#8b949e;letter-spacing:.1em;margin-bottom:3px}
+.instr-val{font-size:27px;font-weight:bold;color:#e6edf3;line-height:1}
+.instr-unit{font-size:12px;color:#8b949e;margin-left:3px}
+.instr-sub{font-size:9px;color:#8b949e;margin-top:3px;min-height:14px}
+/* Smaller font for lower-priority instruments */
+.instr-sm .instr-val{font-size:26px}
+#val-pred{font-size:22px;font-weight:bold;color:#e6edf3}
+#val-acc{font-size:16px;font-weight:bold;color:#e6edf3}
+#val-spd{font-size:22px;font-weight:bold;color:#e6edf3}
+#val-trk{font-size:18px;font-weight:bold;color:#e6edf3}
+
+#heat-panel{border-radius:12px;border:2px solid #30363d;padding:14px;text-align:center;margin-bottom:8px;transition:background .3s,border-color .3s}
+#heat-icon{font-size:20px;line-height:1;flex-shrink:0}
+#heat-txt{font-size:15px;font-weight:bold;letter-spacing:.04em;color:#8b949e;transition:color .3s;white-space:nowrap}
+#heat-detail{font-size:10px;color:#8b949e;flex:1}
+#heat-bar-wrap{display:none;width:100%}
+.bar-track{height:6px;background:#30363d;border-radius:3px;overflow:hidden}
+#heat-bar{height:100%;width:50%;border-radius:3px;transition:width .4s,background .3s}
+.bar-labs{display:flex;justify-content:space-between;font-size:10px;color:#6e7681;margin-top:3px}
+
+/* Chart */
+.chart-wrap{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px;margin-bottom:8px}
+.chart-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.chart-title{font-size:10px;color:#8b949e;letter-spacing:.07em}
+.chart-btns{display:flex;gap:6px}
+.chart-btn{font-size:11px;padding:3px 9px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer;font-family:'Courier New',monospace}
+.chart-btn:active{background:#3d444e}
+.chart-btn.active{background:#0c2d0c;border-color:#238636;color:#3fb950}
+.leg{display:flex;gap:8px;margin-top:4px}
+.leg span{display:flex;align-items:center;gap:3px;font-size:10px;color:#8b949e}
+.leg-line{display:inline-block;width:12px;height:2px;vertical-align:middle}
+
+/* Sollhöhe */
+.soll-wrap{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:8px}
+.soll-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.soll-lbl{font-size:10px;color:#8b949e;letter-spacing:.1em}
+.soll-val{font-size:28px;font-weight:bold;color:#e6edf3}
+.soll-unit{font-size:13px;color:#8b949e}
+.soll-btns{display:flex;gap:6px;margin-bottom:6px}
+.soll-btn{flex:1;padding:9px 4px;font-size:17px;font-weight:bold;background:#21262d;border:1px solid #30363d;border-radius:8px;color:#c9d1d9;cursor:pointer;font-family:'Courier New',monospace}
+.soll-btn:active{background:#3d444e}
+#btn-adopt{width:100%;padding:9px;font-size:12px;font-weight:bold;letter-spacing:.04em;background:#0c2d0c;border:1px solid #238636;border-radius:8px;color:#3fb950;cursor:pointer;font-family:'Courier New',monospace;margin-bottom:6px}
+#btn-adopt:active{background:#1a4d1a}
+.soll-params{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.param-item{background:#0d1117;border:1px solid #21262d;border-radius:6px;padding:7px 10px;display:flex;justify-content:space-between;align-items:center}
+.param-item input{width:52px;text-align:right;background:transparent;border:none;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;font-weight:bold}
+.param-lbl{color:#8b949e;font-size:11px}
+
+.btns{display:flex;gap:8px;margin-bottom:8px}
+.btn{flex:1;padding:12px 8px;font-family:'Courier New',monospace;font-size:13px;font-weight:bold;letter-spacing:.04em;border-radius:8px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer}
+.btn:active{background:#3d444e}
+#btn-gps{background:#0c2d0c;border-color:#238636;color:#3fb950}
+#btn-stop{background:#2d0f0f;border-color:#da3633;color:#f85149;display:none}
+#btn-export{background:#161b22;border-color:#30363d;color:#8b949e;font-size:12px;max-width:90px}
+
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px}
+.stat{background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:8px 10px;text-align:center}
+.stat-lbl{font-size:10px;color:#6e7681;letter-spacing:.07em;margin-bottom:2px}
+.stat-val{font-size:18px;font-weight:bold;color:#c9d1d9}
+.footer{font-size:10px;color:#484f58;text-align:center;padding:3px 0}
+
+.calib-wrap{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:12px;margin-bottom:8px}
+.calib-hdr{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.calib-title{font-size:10px;color:#8b949e;letter-spacing:.1em}
+.calib-btn{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer;font-family:'Courier New',monospace;white-space:nowrap}
+.calib-btn.active{background:#0c2d0c;border-color:#238636;color:#3fb950}
+.calib-row{display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid #21262d}
+.c-lbl{font-size:10px;color:#6e7681;white-space:nowrap;min-width:90px}
+.level-track{flex:1;height:8px;background:#21262d;border-radius:4px;overflow:visible;position:relative}
+.level-fill{height:100%;width:0%;background:#3fb950;border-radius:4px;transition:width .08s}
+.level-thr{position:absolute;top:-2px;height:12px;width:2px;background:#f85149;border-radius:1px}
+</style>
+</head>
+<body>
+<div class="hdr">
+  <div><div class="hdr-title">BRENNERSTEUERUNG</div><div class="hdr-sub">GPS-Kalman-Filter · PWA</div></div>
+  <span id="badge">● BEREIT</span>
+</div>
+<div id="err-banner" style="display:none;padding:10px 12px;background:#2d0f0f;border:1px solid #da3633;border-radius:8px;margin-bottom:8px;font-size:12px;color:#f85149;font-family:'Courier New',monospace"></div>
+<div class="instruments" style="grid-template-columns:repeat(3,minmax(0,1fr))">
+  <div class="instr">
+    <div class="instr-lbl">HÖHE</div>
+    <div><span class="instr-val" id="val-alt">—</span><span class="instr-unit">m</span></div>
+    <div class="instr-sub" id="val-alt-delta"></div>
+  </div>
+  <div class="instr">
+    <div class="instr-lbl">VARIO</div>
+    <div><span class="instr-val" id="val-vario">—</span><span class="instr-unit">m/s</span></div>
+    <div class="instr-sub" id="val-vario-trend"></div>
+  </div>
+  <div class="instr instr-sm">
+    <div class="instr-lbl">BESCHL.</div>
+    <div><span id="val-acc">—</span><span class="instr-unit">m/s²</span></div>
+    <div class="instr-sub" style="color:#484f58">Kalman</div>
+  </div>
+  <div class="instr">
+    <div class="instr-lbl">+<span id="lbl-ahead">20</span>s PROGNOSE</div>
+    <div><span id="val-pred">—</span><span class="instr-unit">m</span></div>
+    <div class="instr-sub" id="val-pred-delta"></div>
+  </div>
+  <div class="instr">
+    <div class="instr-lbl">GESCHWINDIGKEIT</div>
+    <div><span id="val-spd">—</span><span class="instr-unit">kt</span></div>
+    <div class="instr-sub" id="val-spd-sub"></div>
+  </div>
+  <div class="instr">
+    <div class="instr-lbl">TRACK</div>
+    <div><span id="val-trk">—</span><span class="instr-unit">°</span></div>
+    <div class="instr-sub" id="val-trk-dir"></div>
+  </div>
+</div>
+<div id="heat-panel">
+  <div id="heat-icon">⬜</div>
+  <div id="heat-txt">STEUERUNG INAKTIV</div>
+  <div id="heat-detail">GPS starten um Kalman-Steuerung zu aktivieren</div>
+  <div id="burn-dur-wrap" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,0,0,0.25);border-radius:8px">
+    <span style="font-size:11px;color:#8b949e;letter-spacing:.08em">EMPFOHLENE BRENNDAUER</span><br>
+    <span id="burn-dur-val" style="font-size:28px;font-weight:bold;color:#f85149;font-family:'Courier New',monospace">—</span>
+    <span style="font-size:14px;color:#8b949e"> s</span>
+    <span id="burn-dur-sub" style="font-size:11px;color:#8b949e;margin-left:8px"></span>
+  </div>
+  <div id="heat-bar-wrap">
+    <div class="bar-track"><div id="heat-bar"></div></div>
+    <div class="bar-labs"><span>Zu hoch</span><span>Sollhöhe</span><span>Prognose</span><span>Heizen!</span></div>
+  </div>
+</div>
+<div class="chart-wrap">
+  <div class="chart-hdr">
+    <span class="chart-title">HÖHENPROFIL</span>
+    <div class="chart-btns">
+      <button class="chart-btn active" id="btn-live" onclick="goLive()">● Live</button>
+      <button class="chart-btn" onclick="zoomOut()">−</button>
+      <button class="chart-btn" onclick="zoomIn()">+</button>
+      <button class="chart-btn" onclick="exportCSV()">CSV</button>
+    </div>
+  </div>
+  <div class="leg">
+    <span><span class="leg-line" style="background:#58a6ff"></span>Kalman</span>
+    <span><span class="leg-line" style="background:#3fb950;border-top:2px dashed #3fb950"></span>Soll</span>
+    <span><span class="leg-line" style="background:#f0883e"></span>Prog.</span>
+    <span><span class="leg-line" style="background:rgba(200,80,80,.5)"></span>GPS</span>
+    <span><span class="leg-line" style="background:#a371f7"></span>kt</span>
+    <span><span class="leg-line" style="background:#79c0ff;border-top:2px dashed #79c0ff"></span>Track°</span>
+    <span><span style="display:inline-block;width:12px;height:8px;background:rgba(248,81,73,0.4);border:1px solid rgba(248,81,73,0.75);vertical-align:middle;margin-right:3px;border-radius:2px"></span>Brenner</span>
+  </div>
+  <div style="position:relative;height:200px;margin-top:6px;touch-action:pan-y">
+    <canvas id="chart" role="img" aria-label="Höhenprofil"></canvas>
+  </div>
+</div>
+<div class="soll-wrap">
+  <div class="soll-top">
+    <span class="soll-lbl">SOLLHÖHE</span>
+    <div><span class="soll-val" id="disp-target">1500</span><span class="soll-unit"> m</span></div>
+  </div>
+  <button id="btn-adopt" onclick="adoptAlt()">⊙ Aktuelle Höhe übernehmen (<span id="adopt-preview">—</span> m)</button>
+  
+
+  <div class="soll-btns">
+    <button class="soll-btn" onclick="adjTarget(-100)">−100</button>
+    <button class="soll-btn" onclick="adjTarget(-10)">−10</button>
+    <button class="soll-btn" onclick="adjTarget(+10)">+10</button>
+    <button class="soll-btn" onclick="adjTarget(+100)">+100</button>
+  </div>
+  <div class="soll-params">
+    <div class="param-item"><span class="param-lbl">Toleranz ±</span><div><input type="number" id="inp-tol" value="15" min="5" max="100"><span class="param-lbl"> m</span></div></div>
+    <div class="param-item"><span class="param-lbl">Vorausschau</span><div><input type="number" id="inp-ahead" value="20" min="5" max="60"><span class="param-lbl"> s</span></div></div>
+    <div class="param-item"><span class="param-lbl">Max. Brenndauer</span><div><input type="number" id="inp-maxburn" value="12" min="3" max="30"><span class="param-lbl"> s</span></div></div>
+    <div class="param-item" style="grid-column:1/-1"><span class="param-lbl">K m/s²/s  [FB7 Einzel≈0.042 · Doppel≈0.084 · Mix≈0.050]</span><div><input type="number" id="inp-burnk" value="0.050" min="0.005" max="0.5" step="0.005" style="width:72px"><span class="param-lbl"> m/s²/s</span></div></div>
+  </div>
+</div>
+<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span style="font-size:10px;color:#8b949e;letter-spacing:.1em;white-space:nowrap">QNH</span>
+    <button onclick="adjQNH(-1)" style="padding:4px 10px;font-family:'Courier New',monospace;font-size:14px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer">−</button>
+    <input type="number" id="inp-qnh" value="1013" min="900" max="1100" step="1"
+      style="width:72px;text-align:center;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:18px;font-weight:bold;padding:4px"
+      oninput="updateQNH()">
+    <button onclick="adjQNH(+1)" style="padding:4px 10px;font-family:'Courier New',monospace;font-size:14px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer">+</button>
+    <span style="font-size:13px;color:#8b949e">hPa</span>
+    <button onclick="document.getElementById('inp-qnh').value=1013;updateQNH()" style="padding:4px 9px;font-family:'Courier New',monospace;font-size:11px;background:#0c1d2e;border:1px solid #1f6feb;border-radius:6px;color:#58a6ff;cursor:pointer">STD 1013</button>
+    <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:6px">
+      <span style="font-size:10px;color:#8b949e;white-space:nowrap">GPS-Offset</span>
+      <input type="number" id="inp-gps-offset" value="0" step="1"
+        style="width:58px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;padding:3px 6px"
+        oninput="updateQNH()">
+      <span style="font-size:11px;color:#8b949e">m</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:6px">
+      <input type="number" id="inp-ref-alt" placeholder="Platz-MSL" step="1"
+        style="width:90px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-family:'Courier New',monospace;font-size:12px;padding:3px 6px">
+      <button onclick="calibQNH()" style="padding:5px 10px;font-family:'Courier New',monospace;font-size:11px;background:#0c2d0c;border:1px solid #238636;border-radius:6px;color:#3fb950;cursor:pointer;white-space:nowrap">⊙ Abgleich</button>
+    </div>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
+    <span style="font-size:10px;color:#8b949e;white-space:nowrap">Baro-Höhe</span>
+    <input type="number" id="inp-baro-ref" oninput="this.dataset.manuallySet='1'" placeholder="z.B. 1480" step="1"
+      style="width:90px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;padding:3px 6px">
+    <span style="font-size:11px;color:#8b949e">m  (Flytec/Baro-Instrument)</span>
+    <span id="baro-sensor-status" style="font-size:10px;color:#6e7681;margin-left:4px"></span>
+  </div>
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;margin-bottom:2px"><div class="instr" style="background:#0d1117"><div class="instr-lbl">BARO ALT</div><div><span id="val-baro" style="font-size:22px;font-weight:bold;color:#e6edf3">—</span><span class="instr-unit">m</span></div><div class="instr-sub" id="val-baro-sub"></div></div><div class="instr" style="background:#0d1117"><div class="instr-lbl">FL · QNH</div><div><span id="val-fl" style="font-size:22px;font-weight:bold;color:#e6edf3">—</span></div><div class="instr-sub" id="val-fl-sub"></div></div></div><div id="qnh-info" style="font-size:11px;color:#8b949e;margin-top:6px;font-family:'Courier New',monospace"></div>
+</div>
+<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+    <div style="display:flex;align-items:center;gap:6px">
+      <div id="gps-dot" style="width:8px;height:8px;border-radius:50%;background:#30363d;flex-shrink:0"></div>
+      <span id="gps-status" style="font-size:11px;color:#8b949e">GPS inaktiv</span>
+    </div>
+    <span id="gps-acc" style="font-size:11px;color:#8b949e">±— m</span>
+    <span id="gps-fixes" style="font-size:11px;color:#8b949e">0 Fixes</span>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button class="btn" id="btn-gps" onclick="startGPS()" style="background:#0c2d0c;border-color:#238636;color:#3fb950">▶ GPS STARTEN</button>
+    <button class="btn" id="btn-stop" onclick="stopGPS()" style="display:none;background:#2d0f0f;border-color:#da3633;color:#f85149">■ STOPPEN</button>
+    <button class="btn" id="btn-export" onclick="exportCSV()" style="background:#161b22;border-color:#30363d;color:#8b949e;font-size:12px;max-width:80px">↓ CSV</button>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
+    <div class="stat"><div class="stat-lbl">HEIZZYKLEN</div><div class="stat-val" id="st-cycles">0</div></div>
+    <div class="stat"><div class="stat-lbl">BRENNDAUER</div><div class="stat-val" id="st-dur">0s</div></div>
+    <div class="stat"><div class="stat-lbl">BRENNRATE</div><div class="stat-val" id="st-rate">—</div></div>
+  </div>
+</div>
+<div id="notif-bar">
+  <div id="notif-dot"></div>
+  <span id="notif-txt">Watch-Vibration: Berechtigung erteilen</span>
+  <button id="notif-btn" onclick="requestNotif()">Aktivieren</button>
+</div>
+
+<div class="calib-wrap">
+  <div class="calib-hdr">
+    <span class="calib-title">SPRACHE &amp; MIKROFON-KALIBRIERUNG</span>
+    <button id="btn-mic" class="calib-btn" onclick="toggleMic()">🎤 Mikrofon</button>
+  </div>
+
+  <!-- Speech output section -->
+  <div class="calib-row">
+    <span class="c-lbl">SPRACHAUSGABE</span>
+    <span id="speech-status" style="font-size:11px;color:#8b949e;flex:1">Startet mit Mikrofon</span>
+    <button onclick="testSpeak()" style="font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #30363d;background:#21262d;color:#c9d1d9;cursor:pointer;font-family:'Courier New',monospace">🔊 Test</button>
+  </div>
+  <div class="calib-row" style="padding-top:2px;border-top:none">
+    <span class="c-lbl"></span>
+    <span id="speech-tts-status" style="font-size:10px;color:#6e7681;flex:1;font-family:'Courier New',monospace">noch nicht getestet</span>
+    <span id="speech-last" style="font-size:11px;color:#3fb950;text-align:right;min-width:80px"></span>
+  </div>
+  <div class="calib-row">
+    <span class="c-lbl">SPRACHBEFEHLE</span>
+    <span style="font-size:10px;color:#6e7681;flex:1">„Sollhöhe 1500" · „Aktuelle Sollhöhe"</span>
+  </div>
+
+  <!-- Divider -->
+  <div style="border-top:1px solid #30363d;margin:8px 0"></div>
+
+  <!-- Mic level + threshold -->
+  <div class="calib-row">
+    <span class="c-lbl">PEGEL</span>
+    <div class="level-track"><div id="level-fill" class="level-fill"></div><div id="level-thr" class="level-thr" style="left:47%"></div></div>
+    <input type="range" id="inp-mic-thresh" min="20" max="220" value="120" style="width:70px" oninput="updateThresh()">
+    <span id="thresh-val" style="font-size:11px;color:#6e7681;min-width:26px">120</span>
+  </div>
+  <div class="calib-row">
+    <span class="c-lbl">BRENNER</span>
+    <div id="burner-dot" style="width:12px;height:12px;border-radius:50%;background:#30363d;flex-shrink:0"></div>
+    <span id="burner-status" style="font-size:12px;color:#8b949e;flex:1">Mikrofon inaktiv</span>
+    <span id="burn-timer" style="font-size:18px;font-weight:bold;color:#f85149;font-family:'Courier New',monospace;min-width:52px;text-align:right"></span>
+  </div>
+  <div class="calib-row">
+    <span class="c-lbl">K MESSUNGEN</span>
+    <span id="k-hist-txt" style="font-size:11px;color:#8b949e;flex:1">—</span>
+    <span id="k-auto-val" style="font-size:13px;font-weight:bold;font-family:'Courier New',monospace;color:#3fb950;min-width:58px;text-align:right">—</span>
+  </div>
+  <div class="calib-row">
+    <span class="c-lbl">Therm. Verzög.</span>
+    <input type="number" id="inp-lag" value="10" min="3" max="30" style="width:48px;text-align:right;background:transparent;border:none;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px">
+    <span style="font-size:11px;color:#6e7681">s</span>
+    <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
+  </div>
+</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.1</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+<script>
+(function(){
+'use strict';
+
+// ── Service Worker ────────────────────────────────────────────────────────────
+if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+// ── Notifications / Watch ─────────────────────────────────────────────────────
+let notifEnabled=false, lastAlertTime=0, lastAlertState='inactive';
+const ALERT_COOLDOWN=23000; // shared cooldown for notification + speech
+
+function updateNotifBar(){
+  const perm=Notification.permission;
+  const dot=document.getElementById('notif-dot');
+  const txt=document.getElementById('notif-txt');
+  const btn=document.getElementById('notif-btn');
+  if(perm==='granted'){
+    notifEnabled=true;
+    dot.style.background='#3fb950';
+    txt.textContent='⌚ Apple Watch Vibration aktiv';
+    txt.style.color='#3fb950';
+    btn.textContent='✓ Aktiv';
+    btn.style.opacity='0.5';
+    btn.style.pointerEvents='none';
+  } else if(perm==='denied'){
+    dot.style.background='#f85149';
+    txt.textContent='Benachrichtigungen blockiert – Einstellungen prüfen';
+    txt.style.color='#f85149';
+    btn.textContent='Blockiert';
+    btn.style.opacity='0.5';
+  } else {
+    dot.style.background='#d29922';
+    txt.textContent='Watch-Vibration: Berechtigung erteilen';
+    txt.style.color='#d29922';
+    btn.textContent='Aktivieren';
+  }
+}
+
+window.requestNotif=async function(){
+  if(!('Notification' in window)){
+    alert('Bitte App zum Home-Bildschirm hinzufügen (Teilen → Zum Home-Bildschirm), dann funktionieren Benachrichtigungen.');
+    return;
+  }
+  const perm=await Notification.requestPermission();
+  updateNotifBar();
+  if(perm==='granted'){
+    setTimeout(()=>new Notification('✅ Brennersteuerung aktiv',{body:'Watch-Vibration eingerichtet.',tag:'brenner-init',silent:true}),500);
+  }
+};
+
+
+
+
+// ── Sprachausgabe ─────────────────────────────────────────────────────────────
+let lastSpokenState=null, lastSpokenTime=0;
+let lastBurnSec=null;
+const SPEAK_COOLDOWN=22000; // min. 22s zwischen gleicher Ansage
+
+
+
+// ── SW-basierte Notification (funktioniert auch bei gesperrtem Display) ───────
+function swNotify(title, body, silent, vibrate){
+  if(!notifEnabled) return;
+  const opts = {title, body, silent:!!silent, vibrate: vibrate||[300,100,300],
+                tag:'brenner', type:'SHOW_NOTIFICATION'};
+  // Versuch 1: über Service Worker Controller (funktioniert bei gesperrtem Display)
+  if(navigator.serviceWorker && navigator.serviceWorker.controller){
+    navigator.serviceWorker.controller.postMessage(opts);
+    return;
+  }
+  // Versuch 2: über SW Registration
+  if(navigator.serviceWorker){
+    navigator.serviceWorker.ready.then(reg => {
+      reg.showNotification(title,{body,tag:'brenner',renotify:true,
+        silent:!!silent,vibrate:vibrate||[300,100,300,100,300]});
+    }).catch(()=> new Notification(title,{body,tag:'brenner',renotify:true}));
+    return;
+  }
+  // Fallback
+  new Notification(title,{body,tag:'brenner',renotify:true,silent:!!silent});
+}
+
+// ── Unified alert: notification + speech in sync ──────────────────────────────
+function fireAlert(state, detail, burnSec){
+  if(!notifEnabled && !window.speechSynthesis) return;
+  const now=Date.now();
+  const isNew=state!==lastAlertState;
+  const afterCooldown=(now-lastAlertTime)>ALERT_COOLDOWN;
+  let shouldFire=false;
+
+  if(state==='heat' && (isNew||afterCooldown)) shouldFire=true;
+  if(state==='warn' && isNew) shouldFire=true;
+
+  if(!shouldFire){ lastAlertState=state; return; }
+
+  lastAlertTime=now;
+  lastAlertState=state;
+
+  // Build messages
+  const words=['null','eine','zwei','drei','vier','fünf','sechs','sieben','acht','neun',
+               'zehn','elf','zwölf','dreizehn','vierzehn','fünfzehn'];
+  let speechText='', notifTitle='';
+
+  if(state==='heat'){
+    if(burnSec!==null){
+      const w=burnSec<=15?words[burnSec]:burnSec;
+      speechText='Jetzt heizen, '+w+' Sekunden';
+      notifTitle='🔴 Heizen ~'+burnSec+'s';
+    } else {
+      speechText='Jetzt heizen';
+      notifTitle='🔴 JETZT HEIZEN!';
+    }
+  } else if(state==='warn'){
+    speechText='Heizen vorbereiten';
+    notifTitle='🟡 Heizen vorbereiten';
+  }
+
+  // Fire both simultaneously
+  speak(speechText);
+  if(notifEnabled){
+    swNotify(notifTitle, detail, false, [300,100,300,100,300]);
+  }
+}
+
+let speechOK=false; // tracks if TTS has worked at least once
+
+function speak(text){
+  const ss=window.speechSynthesis;
+  if(!ss){ updateSpeechStatus('nicht verfügbar'); return; }
+  // iOS fix: resume if paused (happens after screen lock)
+  if(ss.paused) ss.resume();
+  ss.cancel();
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='de-DE';
+  u.rate=0.95;
+  u.pitch=1.0;
+  u.volume=1.0;
+  // iOS fix: pick a German voice if available
+  const voices=ss.getVoices();
+  const deVoice=voices.find(v=>v.lang.startsWith('de'));
+  if(deVoice) u.voice=deVoice;
+  u.onstart=()=>{ speechOK=true; updateSpeechStatus('✓ aktiv: '+text); };
+  u.onerror=(e)=>{ updateSpeechStatus('✗ Fehler: '+e.error); };
+  // iOS fix: small delay after cancel
+  setTimeout(()=>ss.speak(u), 80);
+}
+
+function updateSpeechStatus(msg){
+  const el=document.getElementById('speech-tts-status');
+  if(el) el.textContent=msg;
+}
+
+window.testSpeak=function(){
+  speak('Test, Sprachausgabe funktioniert');
+};
+
+
+
+// ── Kalman-Filter ─────────────────────────────────────────────────────────────
+function makeKalman(sa){
+  return{
+    x:null,P:[[2500,0,0],[0,25,0],[0,0,1]],sa,
+    update(z,dt,R){
+      if(this.x===null){this.x=[z,0,0];return;}
+      const[h,v,a]=this.x,dh=0.5*dt*dt;
+      const xp=[h+v*dt+a*dh,v+a*dt,a];
+      const P=this.P,sa=this.sa,d2=dt*dt,d3=d2*dt,d4=d3*dt;
+      const Q=[[d4/4*sa*sa,d3/2*sa*sa,d2/2*sa*sa],[d3/2*sa*sa,d2*sa*sa,dt*sa*sa],[d2/2*sa*sa,dt*sa*sa,sa*sa]];
+      const fp=[
+        [P[0][0]+dt*P[1][0]+dh*P[2][0],P[0][1]+dt*P[1][1]+dh*P[2][1],P[0][2]+dt*P[1][2]+dh*P[2][2]],
+        [P[1][0]+dt*P[2][0],P[1][1]+dt*P[2][1],P[1][2]+dt*P[2][2]],
+        [...P[2]]
+      ];
+      const pp=fp.map(r=>[r[0]+r[1]*dt+r[2]*dh,r[1]+r[2]*dt,r[2]]);
+      for(let i=0;i<3;i++) for(let j=0;j<3;j++) pp[i][j]+=Q[i][j];
+      const S=pp[0][0]+R;
+      const K=[pp[0][0]/S,pp[1][0]/S,pp[2][0]/S];
+      const inn=z-xp[0];
+      this.x=xp.map((xi,i)=>xi+K[i]*inn);
+      this.P=pp.map((row,i)=>row.map((val,j)=>val-K[i]*pp[0][j]));
+    },
+    future(T){
+      if(!this.x) return null;
+      const[h,v,a]=this.x;
+      return h+v*T+0.5*a*T*T;
+    }
+  };
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const DIRS=['N','NNO','NO','ONO','O','OSO','SO','SSO','S','SSW','SW','WSW','W','WNW','NW','NNW'];
+function trackStr(h){ return h!==null&&h!==undefined ? DIRS[Math.round(h/22.5)%16] : '—'; }
+
+// ── App State ─────────────────────────────────────────────────────────────────
+let kf=null,watchId=null,wakeLock=null,lastTime=null;
+let fixes=0,elapsed=0,heatCycles=0,heatDur=0,prevHeat=false;
+let targetAlt=1500;
+let currentAlt=null;  // latest Kalman altitude
+
+// Full log arrays (unlimited)
+let logRaw=[],logH=[],logP=[],logT=[],logSpd=[],logTrk=[];
+let logBurner=[];    // 0/1 per GPS fix: burner active?
+let kfAHistory=[];   // recent Kalman accelerations for K calibration
+let kfVHistory=[];   // recent Kalman velocities for vario-based K calibration
+let flightStartTime=null; // for 10-min calibration phase
+let calibPhaseActive=false;
+let kHistory=[];     // measured K values
+let aAfterBurnPending=null; // pending K measurement after burn
+
+const VIEW=300; // default visible window (seconds)
+let isLive=true;
+let ch=null;
+
+// ── Chart ─────────────────────────────────────────────────────────────────────
+function initChart(){
+  const c=document.getElementById('chart');
+  if(ch) ch.destroy();
+  ch=new Chart(c,{
+    type:'line',
+    data:{datasets:[
+      {label:'GPS',data:[],borderColor:'rgba(200,80,80,.4)',borderWidth:1,pointRadius:0,tension:0,fill:false,borderDash:[2,2]},
+      {label:'Kalman',data:[],borderColor:'#58a6ff',borderWidth:2,pointRadius:0,tension:0.3,fill:false},
+      {label:'Soll',data:[],borderColor:'#3fb950',borderWidth:1.5,borderDash:[6,4],pointRadius:0,fill:false},
+      {label:'Prognose',data:[],borderColor:'#f0883e',borderWidth:1.5,borderDash:[3,3],pointRadius:0,fill:false},
+      {label:'Geschw. kt',data:[],borderColor:'#a371f7',borderWidth:1,pointRadius:0,tension:0.3,fill:false,yAxisID:'y2'},
+      {label:'Track °',data:[],borderColor:'#79c0ff',borderWidth:1,borderDash:[3,3],pointRadius:0,fill:false,yAxisID:'y2'},
+      {label:'Brenner',data:[],borderColor:'rgba(248,81,73,0.75)',backgroundColor:'rgba(248,81,73,0.13)',borderWidth:2,pointRadius:0,stepped:true,fill:'origin',yAxisID:'yBurn'}
+    ]},
+    options:{
+      parsing:false,
+      responsive:true,maintainAspectRatio:false,
+      animation:{duration:0},
+      plugins:{
+        legend:{display:false},
+        zoom:{
+          pan:{
+            enabled:true,mode:'x',
+            onPan(){setLive(false);}
+          },
+          zoom:{
+            pinch:{enabled:true},
+            wheel:{enabled:false},
+            mode:'x',
+            onZoom(){setLive(false);}
+          }
+        }
+      },
+      scales:{
+        x:{
+          type:'linear',
+          ticks:{maxTicksLimit:5,font:{size:10},color:'#6e7681',
+            callback(v){
+              const i=Math.round(v);
+              return(i>=0&&i<logT.length)?logT[i]:'';
+            }
+          },
+          grid:{color:'rgba(255,255,255,.05)'},
+          border:{color:'rgba(255,255,255,.1)'}
+        },
+        y:{
+          ticks:{font:{size:10},color:'#6e7681'},
+          grid:{color:'rgba(255,255,255,.05)'},
+          border:{color:'rgba(255,255,255,.1)'}
+        },
+        y2:{
+          type:'linear',position:'right',
+          ticks:{font:{size:9},color:'#6e7681',maxTicksLimit:5},
+          grid:{drawOnChartArea:false},
+          border:{color:'rgba(255,255,255,.1)'}
+        },
+        yBurn:{
+          type:'linear',min:0,max:1,display:false
+        }
+      }
+    }
+  });
+}
+
+function setLive(on){
+  isLive=on;
+  document.getElementById('btn-live').className='chart-btn'+(on?' active':'');
+}
+
+function updateChartData(){
+  const n=logH.length;
+  ch.data.datasets[0].data=logRaw.map((y,x)=>({x,y}));
+  ch.data.datasets[1].data=logH.map((y,x)=>({x,y}));
+  ch.data.datasets[2].data=logH.map((_,x)=>({x,y:targetAlt}));
+  ch.data.datasets[3].data=logP.map((y,x)=>({x,y}));
+  ch.data.datasets[4].data=logSpd.map((y,x)=>({x,y:y}));
+  ch.data.datasets[5].data=logTrk.map((y,x)=>({x,y:y}));
+  ch.data.datasets[6].data=logBurner.map((y,x)=>({x,y:y}));
+  if(isLive){
+    ch.options.scales.x.min=Math.max(0,n-VIEW);
+    ch.options.scales.x.max=n-1+10;
+  }
+  ch.update('none');
+}
+
+window.goLive=function(){
+  setLive(true);
+  ch.resetZoom();
+  updateChartData();
+};
+window.zoomIn=function(){
+  setLive(false);
+  ch.zoom(1.5);
+};
+window.zoomOut=function(){
+  setLive(false);
+  ch.zoom(0.67);
+};
+
+// ── GPS Callback ──────────────────────────────────────────────────────────────
+function onGPS(pos){
+  const now=pos.timestamp;
+  const rawH=pos.coords.altitude;
+  const acc=pos.coords.altitudeAccuracy;
+  const spd=pos.coords.speed;       // m/s or null
+  const hdg=pos.coords.heading;     // degrees or null
+
+  // Count all GPS callbacks (even without altitude)
+  fixes++;
+  document.getElementById('gps-fixes').textContent=fixes+' Fixes';
+  if(rawH===null||rawH===undefined){
+    document.getElementById('gps-status').textContent='Warte auf 3D-Fix ('+fixes+' 2D)…';
+    document.getElementById('gps-dot').style.background='#d29922';
+    document.getElementById('gps-acc').textContent='kein Alt.';
+    return;  // keep waiting
+  }
+
+  const accStr=acc?'±'+acc.toFixed(0)+' m':'±? m';
+  document.getElementById('gps-acc').textContent=accStr;
+  const dotCol=acc<10?'#3fb950':acc<25?'#d29922':'#f85149';
+  document.getElementById('gps-dot').style.background=dotCol;
+  document.getElementById('gps-status').textContent=acc<10?'GPS gut':acc<25?'GPS mittel':'GPS schwach';
+
+  // Speed
+  if(spd!==null&&spd!==undefined){
+    const kt=(spd*1.94384);
+    document.getElementById('val-spd').textContent=kt.toFixed(1);
+    document.getElementById('val-spd-sub').textContent=(spd*3.6).toFixed(1)+' km/h';
+  } else {
+    document.getElementById('val-spd').textContent='—';
+    document.getElementById('val-spd-sub').textContent='kein Signal';
+  }
+
+  // Track/Heading
+  if(hdg!==null&&hdg!==undefined&&(spd===null||spd>0.5)){
+    document.getElementById('val-trk').textContent=Math.round(hdg);
+    document.getElementById('val-trk-dir').textContent='';
+  } else {
+    document.getElementById('val-trk').textContent='—';
+    document.getElementById('val-trk-dir').textContent='';
+  }
+
+  const R=acc?Math.min(Math.max(acc*acc,9),2500):400;
+  let dt=2;
+  if(lastTime!==null) dt=Math.min((now-lastTime)/1000,10);
+  lastTime=now;
+  if(!kf) kf=makeKalman(0.05);
+  kf.update(rawH,dt,R);
+  if(kf.x){
+    kfAHistory.push(kf.x[2]); if(kfAHistory.length>20) kfAHistory.shift();
+    kfVHistory.push(kf.x[1]); if(kfVHistory.length>20) kfVHistory.shift();
+    if(!flightStartTime) flightStartTime=Date.now();
+    calibPhaseActive=(Date.now()-flightStartTime)<600000; // 10 min
+  }
+  checkKCalibration(kf.x?kf.x[2]:0, kf.x?kf.x[1]:0);
+  logBurner.push(burnActive?1:0);
+
+  const{tol,ahead,burnK}=getP();
+  document.getElementById('lbl-ahead').textContent=ahead;
+  const[h,v,a]=kf.x;
+  const pred=kf.future(ahead);
+  currentAlt=h;
+
+  // Update adopt button preview
+  document.getElementById('adopt-preview').textContent=h.toFixed(0);
+  updateBaroDisplay(h);
+
+  // Instruments
+  document.getElementById('val-alt').textContent=h.toFixed(1);
+  document.getElementById('val-alt-delta').textContent=(h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll';
+  const vEl=document.getElementById('val-vario');
+  vEl.textContent=(v>=0?'+':'')+v.toFixed(2);
+  vEl.style.color=v>0.3?'#3fb950':v<-0.3?'#f85149':'#c9d1d9';
+  document.getElementById('val-vario-trend').textContent=v>0.2?'▲ Steigend':v<-0.2?'▼ Sinkend':'→ Stabil';
+  document.getElementById('val-acc').textContent=(a>=0?'+':'')+a.toFixed(3);
+  document.getElementById('val-pred').textContent=pred!==null?pred.toFixed(1):'—';
+  document.getElementById('val-pred-delta').textContent=pred!==null?(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m vs Soll':'';
+
+  // Heat decision + burn duration estimate
+  // Physics: Δa = 2*(targetAlt - pred) / T²  →  t_burn = Δa / K
+  // K = Brennerkoeffizient (m/s² added acceleration per second of burn)
+  let state='ok',htxt='',detail='',barPct=50,needsHeat=false;
+  let burnSec=null;
+  if(pred!==null){
+    const def=targetAlt-pred;
+    barPct=Math.max(0,Math.min(100,((pred-targetAlt+tol)/(2*tol))*100));
+    // Burn duration: additional acceleration needed / K
+    // Δa_needed = 2 * deficit / T²
+    if(def>0){
+      const daNeed=2*def/(ahead*ahead);
+      const maxBurn=parseFloat(document.getElementById("inp-maxburn").value)||12;
+      const thermalLag=parseFloat(document.getElementById("inp-lag").value)||10;
+      const maxVario=2.5;
+      // Vario cap: v + K*t*thermalLag <= 2.5 => t <= (2.5-v)/(K*thermalLag)
+      const tVarioCap=burnK>0&&thermalLag>0 ? Math.max(1,(maxVario-v)/(burnK*thermalLag)) : maxBurn;
+      const tRaw=Math.round(daNeed/burnK);
+      burnSec=Math.max(1,Math.min(maxBurn,Math.min(tRaw,Math.ceil(tVarioCap))));
+      const predictedVario=Math.min(maxVario, v+burnK*burnSec*thermalLag);
+    }
+    if(def>tol){
+      state='heat';htxt='JETZT HEIZEN!';needsHeat=true;
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
+    } else if(def>tol*0.25){
+      state='warn';htxt='HEIZEN EMPFOHLEN';needsHeat=true;
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
+    } else if(h>targetAlt+tol){
+      state='high';htxt='ZU HOCH – BRENNER AUS';
+      detail='Aktuelle Höhe: '+h.toFixed(1)+' m · '+(h-targetAlt).toFixed(1)+' m über Sollhöhe';
+      burnSec=null;
+    } else {
+      state='ok';htxt='HÖHE STABIL';
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · Δ '+(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m';
+      burnSec=null;
+    }
+  }
+
+  lastBurnSec=burnSec;
+  fireAlert(state,detail,burnSec);
+
+  if(needsHeat&&!prevHeat) heatCycles++;
+  if(needsHeat) heatDur++;
+  prevHeat=needsHeat;
+  elapsed++;
+  const br=elapsed>0?(heatDur/elapsed*100):0;
+  document.getElementById('st-cycles').textContent=heatCycles;
+  document.getElementById('st-dur').textContent=heatDur+'s';
+  document.getElementById('st-rate').textContent=elapsed>5?br.toFixed(1)+'%':'—';
+
+  const S={
+    ok: {bg:'#0d2615',dot:'#3fb950',txt:'#3fb950',bdr:'#238636',icon:'🟢',bar:'#3fb950'},
+    warn:{bg:'#2b1d0e',dot:'#d29922',txt:'#d29922',bdr:'#9e6a03',icon:'🟡',bar:'#d29922'},
+    heat:{bg:'#2d0f0f',dot:'#f85149',txt:'#f85149',bdr:'#da3633',icon:'🔴',bar:'#f85149'},
+    high:{bg:'#0c1d2e',dot:'#58a6ff',txt:'#58a6ff',bdr:'#1f6feb',icon:'🔵',bar:'#58a6ff'}
+  };
+  const s=S[state]||S.ok;
+  const panel=document.getElementById('heat-panel');
+  panel.style.background=s.bg; panel.style.borderColor=s.bdr;
+  document.getElementById('heat-icon').textContent=s.icon;
+  const tEl=document.getElementById('heat-txt'); tEl.style.color=s.txt; tEl.textContent=htxt;
+  document.getElementById('heat-detail').textContent=detail;
+  document.getElementById('heat-bar').style.width=barPct+'%';
+  document.getElementById('heat-bar').style.background=s.bar;
+  document.getElementById('heat-bar-wrap').style.display='block';
+  // Burn duration display
+  const bdWrap=document.getElementById('burn-dur-wrap');
+  if(burnSec!==null&&(state==='heat'||state==='warn')){
+    bdWrap.style.display='block';
+    document.getElementById('burn-dur-val').textContent=burnSec;
+    document.getElementById('burn-dur-val').style.color=state==='heat'?'#f85149':'#d29922';
+    const daN=burnSec*burnK;
+    document.getElementById('burn-dur-sub').textContent='→ ~'+predictedVario.toFixed(1)+' m/s Steigrate';
+  } else {
+    bdWrap.style.display='none';
+  }
+
+  const badge=document.getElementById('badge');
+  badge.textContent=state==='heat'?'● HEIZEN!':'● GPS AKTIV';
+  badge.style.background=state==='heat'?'#2d0f0f':'#0c1d2e';
+  badge.style.color=state==='heat'?'#f85149':'#58a6ff';
+  badge.style.borderColor=state==='heat'?'#da3633':'#1f6feb';
+
+  // Log
+  const ts=new Date(now).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  logRaw.push(rawH); logH.push(h); logP.push(pred); logT.push(ts);
+  logSpd.push(spd!==null?spd*1.94384:null);
+  logTrk.push(hdg);
+  updateChartData();
+}
+
+function showErr(msg){
+  const b=document.getElementById('err-banner');
+  b.textContent='⚠ '+msg;
+  b.style.display='block';
+  document.getElementById('gps-status').textContent='Fehler';
+  document.getElementById('gps-dot').style.background='#f85149';
+}
+function onGPSError(err){
+  const m={1:'GPS-Berechtigung verweigert – In Safari: Einstellungen → Datenschutz → Ortungsdienste → Safari → Erlauben',2:'GPS Position nicht verfügbar',3:'GPS-Timeout – Bitte nochmal versuchen'};
+  showErr(m[err.code]||'GPS-Fehler: '+err.message);
+  document.getElementById('btn-gps').style.display='block';
+  document.getElementById('btn-stop').style.display='none';
+}
+
+async function requestWakeLock(){
+  if('wakeLock' in navigator){
+    try{
+      wakeLock=await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release',()=>{wakeLock=null;});
+    }catch(e){}
+  }
+}
+
+function getP(){
+  return{
+    tol:parseFloat(document.getElementById('inp-tol').value)||15,
+    ahead:parseFloat(document.getElementById('inp-ahead').value)||20,
+    burnK:parseFloat(document.getElementById('inp-burnk').value)||0.050 // Schröder G34/24, FB7-Einzel 35% η
+  };
+}
+
+// ── Controls ──────────────────────────────────────────────────────────────────
+window.startGPS=function(){
+  document.getElementById('err-banner').style.display='none';
+  try{
+  if(!navigator.geolocation){
+    showErr('Geolocation nicht verfügbar in diesem Browser.');return;
+  }
+  kf=makeKalman(0.05);
+  lastTime=null;fixes=0;elapsed=0;heatCycles=0;heatDur=0;prevHeat=false;lastAlertState='inactive';
+  logRaw=[];logH=[];logP=[];logT=[];logSpd=[];logTrk=[];
+  kfAHistory=[];kfVHistory=[];kHistory=[];aAfterBurnPending=null;burnActive=false;burnStart=null;
+  logBurner=[];flightStartTime=null;calibPhaseActive=false;
+  currentAlt=null;
+  initChart();requestWakeLock();setLive(true);
+  document.getElementById('btn-gps').style.display='none';
+  document.getElementById('btn-stop').style.display='block';
+  document.getElementById('badge').textContent='● GPS AKTIV';
+  document.getElementById('badge').style.cssText='font-size:11px;padding:4px 10px;border-radius:12px;background:#0c1d2e;border:1px solid #1f6feb;color:#58a6ff;white-space:nowrap';
+  document.getElementById('gps-status').textContent='GPS wird gestartet…';
+  document.getElementById('gps-dot').style.background='#d29922';
+  watchId=navigator.geolocation.watchPosition(onGPS,onGPSError,{enableHighAccuracy:true,maximumAge:0,timeout:10000});
+  }catch(e){showErr('Fehler: '+e.message);}
+};
+
+window.stopGPS=function(){
+  if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
+  if(wakeLock){wakeLock.release();wakeLock=null;}
+  kf=null;lastTime=null;lastAlertState='inactive';
+  document.getElementById('btn-gps').style.display='block';
+  document.getElementById('btn-stop').style.display='none';
+  document.getElementById('badge').textContent='● GESTOPPT';
+  document.getElementById('badge').style.cssText='font-size:11px;padding:4px 10px;border-radius:12px;background:#161b22;border:1px solid #30363d;color:#8b949e;white-space:nowrap';
+  document.getElementById('gps-dot').style.background='#30363d';
+  document.getElementById('gps-status').textContent='GPS gestoppt';
+  document.getElementById('heat-panel').style.cssText='border-radius:12px;border:2px solid #30363d;padding:14px;text-align:center;margin-bottom:8px;background:#161b22';
+  document.getElementById('heat-icon').textContent='⬜';
+  document.getElementById('heat-txt').textContent='STEUERUNG INAKTIV';
+  document.getElementById('heat-txt').style.color='#8b949e';
+  document.getElementById('heat-detail').textContent='GPS starten um Kalman-Steuerung zu aktivieren';
+  document.getElementById('heat-bar-wrap').style.display='none';
+};
+
+window.adjTarget=function(d){
+  targetAlt=Math.max(0,Math.min(5000,targetAlt+d));
+  document.getElementById('disp-target').textContent=targetAlt;
+};
+
+window.adoptAlt=function(){
+  if(currentAlt===null) return;
+  targetAlt=Math.round(currentAlt);
+  document.getElementById('disp-target').textContent=targetAlt;
+  // Flash feedback
+  const btn=document.getElementById('btn-adopt');
+  btn.style.background='#238636';
+  setTimeout(()=>btn.style.background='',600);
+};
+
+window.exportCSV=function(){
+  if(!logH.length){alert('Keine Daten vorhanden.');return;}
+  const lines=['Zeit,GPS_Roh_m,Kalman_m,Prognose_m,Soll_m,Geschw_kt,Track_deg,Brenner'];
+  for(let i=0;i<logH.length;i++){
+    lines.push([
+      logT[i],
+      logRaw[i]!==undefined?logRaw[i].toFixed(2):'',
+      logH[i].toFixed(2),
+      logP[i]!==null?logP[i].toFixed(2):'',
+      targetAlt,
+      logSpd[i]!==null?logSpd[i].toFixed(1):'',
+      logTrk[i]!==null?logTrk[i].toFixed(0):'',
+      logBurner[i]!==undefined?logBurner[i]:''
+    ].join(','));
+  }
+  const blob=new Blob([lines.join('\n')],{type:'text/csv'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;
+  a.download='ballonfahrt_'+new Date().toISOString().slice(0,16).replace('T','_')+'.csv';
+  a.click();
+  URL.revokeObjectURL(url);
+};
+
+
+
+// Zeige persistente Notification bei Displaysperre (Watch bleibt informiert)
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState==='hidden' && watchId!==null){
+    // Screen locked while GPS running → show persistent status notification
+    swNotify(
+      '🔵 Brennersteuerung aktiv',
+      'GPS läuft · Entsperren für Live-Anzeige · Heizsignal kommt als Vibration',
+      true,  // silent = true for status, loud for heat alerts
+      []
+    );
+  }
+  if(document.visibilitystate==='visible' && watchId!==null){
+    if(micActive){
+      if(micStream) micStream.getTracks().forEach(t=>t.stop());
+      if(audioCtx) audioCtx.close();
+    }
+    requestWakeLock();
+  }
+});
+window.addEventListener('pagehide', ()=>{
+  if(micActive) stopMic();
+});
+
+
+
+
+// ── Audio / Mikrofon-Brennererkennung ─────────────────────────────────────────
+let audioCtx=null,analyser=null,micStream=null,micActive=false,micIv=null;
+let burnActive=false,burnStart=null,potentialBurnStart=null,lastAboveTime=null;
+let aBeforeBurn=[];
+
+let micThreshold=120;
+const MIN_BURN_MS=600, SILENCE_GAP_MS=900;
+
+window.toggleMic=async function(){
+  micActive?stopMic():await startMic();
+};
+
+async function startMic(){
+  try{
+    const stream=await navigator.mediaDevices.getUserMedia({audio:true,video:false,noiseSuppression:false,echoCancellation:false});
+    audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+    analyser=audioCtx.createAnalyser();
+    analyser.fftSize=512;
+    audioCtx.createMediaStreamSource(stream).connect(analyser);
+    micStream=stream;micActive=true;
+    document.getElementById('btn-mic').className='calib-btn active';
+    document.getElementById('btn-mic').textContent='🎤 Aktiv';
+    document.getElementById('burner-status').textContent='Kein Brenner erkannt';
+    startSpeech();
+    const buf=new Uint8Array(analyser.frequencyBinCount);
+    micIv=setInterval(()=>{
+      analyser.getByteFrequencyData(buf);
+      let s=0; for(let i=0;i<buf.length;i++) s+=buf[i]*buf[i];
+      const rms=Math.sqrt(s/buf.length);
+      processMicLevel(rms,Date.now());
+      const pct=Math.min(100,(rms/255)*100);
+      document.getElementById('level-fill').style.width=pct+'%';
+      document.getElementById('level-fill').style.background=rms>micThreshold?'#f85149':'#3fb950';
+    },80);
+  }catch(e){ alert('Mikrofon nicht verfügbar:\n'+e.message); }
+}
+
+function stopMic(){
+  if(micIv)clearInterval(micIv);
+  if(micStream)micStream.getTracks().forEach(t=>t.stop());
+  if(audioCtx)audioCtx.close();
+  micActive=false;micStream=null;analyser=null;audioCtx=null;
+  burnActive=false;burnStart=null;potentialBurnStart=null;
+  document.getElementById('btn-mic').className='calib-btn';
+  document.getElementById('btn-mic').textContent='🎤 Mikrofon';
+  document.getElementById('burner-dot').style.background='#30363d';
+  document.getElementById('burner-status').textContent='Mikrofon inaktiv';
+  stopSpeech();
+  document.getElementById('level-fill').style.width='0%';
+  document.getElementById('burn-timer').textContent='';
+}
+
+function processMicLevel(rms,now){
+  if(rms>micThreshold){
+    lastAboveTime=now;
+    if(!potentialBurnStart) potentialBurnStart=now;
+    if(!burnActive&&(now-potentialBurnStart)>=MIN_BURN_MS){
+      burnActive=true; burnStart=potentialBurnStart;
+      aBeforeBurn=[...kfAHistory.slice(-5)];
+      document.getElementById('burner-dot').style.background='#f85149';
+      document.getElementById('burner-status').textContent='🔥 BRENNER AN';
+      // Pause speech recognition during burner noise
+      if(speechActive&&speechRec){try{speechRec.abort();}catch(e){}}
+      document.getElementById('k-calib-status').textContent='Brennt...';
+    }
+    if(burnActive){
+      const dur=((now-burnStart)/1000).toFixed(1);
+      document.getElementById('burn-timer').textContent=dur+'s';
+    }
+  } else {
+    if(burnActive&&lastAboveTime&&(now-lastAboveTime)>=SILENCE_GAP_MS){
+      const dur=(lastAboveTime-burnStart)/1000;
+      if(dur>MIN_BURN_MS/1000) onBurnEnd(dur);
+      burnActive=false;burnStart=null;potentialBurnStart=null;
+      document.getElementById('burner-dot').style.background='#30363d';
+      document.getElementById('burner-status').textContent='Kein Brenner erkannt';
+    startSpeech();
+      document.getElementById('burn-timer').textContent='';
+      // Resume speech recognition
+      if(speechActive){ setTimeout(()=>{ if(speechActive) try{speechRec.start();}catch(e){} }, 800); }
+    }
+    if(!burnActive) potentialBurnStart=null;
+  }
+}
+
+function onBurnEnd(dur){
+  const lag=parseInt(document.getElementById('inp-lag').value)||10;
+  const ab=aBeforeBurn.length?aBeforeBurn.reduce((x,y)=>x+y)/aBeforeBurn.length:null;
+  const vb=kfVHistory.length?kfVHistory.slice(-5).reduce((x,y)=>x+y)/Math.min(5,kfVHistory.length):null;
+  aAfterBurnPending={dur, aBefore:ab, vBefore:vb, measureAt:Date.now()+lag*1000};
+  document.getElementById('k-calib-status').textContent='Warte '+lag+'s auf Wärmeentfaltung…';
+}
+
+function checkKCalibration(a,v_cur){
+  if(!aAfterBurnPending) return;
+  if(Date.now()<aAfterBurnPending.measureAt) return;
+  const{dur,aBefore}=aAfterBurnPending;
+  const a_current_vel=v_cur||0;
+  const pending=aAfterBurnPending;
+  aAfterBurnPending=null;
+  if(aBefore===null){
+    document.getElementById('k-calib-status').textContent='Kein a_vor-Wert';
+    return;
+  }
+  const da=a-aBefore;
+  const lag=parseInt(document.getElementById('inp-lag').value)||10;
+  let kSamples=[];
+  let kInfo='';
+
+  // K from acceleration response
+  if(da>0.003&&dur>0.5){
+    const kA=da/dur;
+    if(kA>0.004&&kA<0.5){ kSamples.push(kA); kInfo+='Ka='+kA.toFixed(3); }
+  }
+
+  // K from vario response (only during first 10 min = calibration phase)
+  if(calibPhaseActive&&pending.vBefore!==null&&pending.vBefore!==undefined){
+    const dv=a_current_vel-pending.vBefore; // use current velocity
+    if(dv>0.1&&dur>0.5){
+      const kV=dv/(dur*lag);
+      if(kV>0.004&&kV<0.5){
+        kSamples.push(kV);
+        kInfo+=(kInfo?' · ':'')+'Kv='+kV.toFixed(3)+(calibPhaseActive?' 🎯':'');
+      }
+    }
+  }
+
+  if(kSamples.length>0){
+    const kNew=kSamples.reduce((a,b)=>a+b)/kSamples.length;
+    kHistory.push(parseFloat(kNew.toFixed(4)));
+    if(kHistory.length>12) kHistory.shift();
+    const med=kHistory.slice().sort((a,b)=>a-b)[Math.floor(kHistory.length/2)];
+    document.getElementById('inp-burnk').value=med.toFixed(3);
+    document.getElementById('k-auto-val').textContent=med.toFixed(3);
+    document.getElementById('k-hist-txt').textContent=kHistory.map(v=>v.toFixed(3)).join(' · ');
+    const phase=calibPhaseActive?(' · Kalib.phase '+(Math.floor((Date.now()-flightStartTime)/60000)+1)+'/10min'):'';
+    document.getElementById('k-calib-status').textContent='✓ '+kInfo+' · n='+kHistory.length+phase;
+  } else {
+    document.getElementById('k-calib-status').textContent='Kein Signal (Δa='+da.toFixed(4)+', Turb.?)';
+  }
+}
+
+window.updateThresh=function(){
+  micThreshold=parseInt(document.getElementById('inp-mic-thresh').value);
+  document.getElementById('thresh-val').textContent=micThreshold;
+  document.getElementById('level-thr').style.left=(micThreshold/255*100).toFixed(1)+'%';
+};
+
+
+// ── Sprachsteuerung ───────────────────────────────────────────────────────────
+// Unterstützte Befehle (Deutsch):
+//   "Sollhöhe 1500"  |  "Neue Sollhöhe 1200"  |  "Höhe 1300"
+//   "1400 Meter"     |  "Aktuelle Höhe"        |  "Übernehmen"
+let speechRec=null, speechActive=false;
+
+function startSpeech(){
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  if(!SR){ alert('Spracherkennung nicht verfügbar.\niOS: App muss als PWA installiert sein.'); return; }
+  speechRec=new SR();
+  speechRec.lang='de-DE';
+  speechRec.continuous=false;   // iOS: false stabiler als true
+  speechRec.interimResults=true;
+  speechRec.maxAlternatives=3;
+
+  speechRec.onresult=(e)=>{
+    const last=e.results[e.results.length-1];
+    const txt=Array.from({length:last.length},(_,i)=>last[i].transcript).join(' | ');
+    document.getElementById('speech-status').textContent=(last.isFinal?'✓ ':'… ')+last[0].transcript;
+    if(last.isFinal){
+      // Try all alternatives for better recognition
+      let handled=false;
+      for(let i=0;i<last.length&&!handled;i++){
+        handled=processVoiceCmd(last[i].transcript);
+      }
+      if(!handled) document.getElementById('speech-last').textContent='?';
+      setTimeout(()=>document.getElementById('speech-status').textContent='Höre zu…',1200);
+    }
+  };
+
+  speechRec.onend=()=>{
+    if(speechActive&&!burnActive){
+      setTimeout(()=>{ if(speechActive) try{speechRec.start();}catch(e){} },350);
+    }
+  };
+
+  speechRec.onerror=(e)=>{
+    if(e.error!=='no-speech'&&e.error!=='aborted'){
+      document.getElementById('speech-status').textContent='Fehler: '+e.error;
+    }
+    if(speechActive&&!burnActive){
+      setTimeout(()=>{ if(speechActive) try{speechRec.start();}catch(e){} },600);
+    }
+  };
+
+  try{
+    speechRec.start();
+    speechActive=true;
+    document.getElementById('speech-status').textContent='Höre zu — Sag: Sollhöhe 1500';
+  }catch(e){ alert('Spracherkennung Fehler: '+e.message); }
+}
+
+function stopSpeech(){
+  speechActive=false;
+  if(speechRec){speechRec.abort();speechRec=null;}
+  document.getElementById('speech-status').textContent='Startet mit Mikrofon';
+  document.getElementById('speech-last').textContent='';
+}
+
+function processVoiceCmd(raw){
+  // Reagiert nur auf:
+  // "Sollhöhe 1500" / "Sollhöhe 1500 Meter"
+  // "Sollhöhe aktuelle Höhe"
+  const t=raw.toLowerCase()
+    .replace(/ä/g,'ae').replace(/ö/g,'oe').replace(/ü/g,'ue')
+    .replace(/[.,!?]/g,'').trim();
+
+  // Mit Zahl: "sollhöhe 1500" (mit oder ohne "meter")
+  const m=t.match(/soll\s*hoehe?\s+(\d{3,4})/);
+  if(m){
+    const alt=parseInt(m[1]);
+    if(alt>=100&&alt<=5000){
+      targetAlt=alt;
+      document.getElementById('disp-target').textContent=targetAlt;
+      document.getElementById('speech-last').textContent='→ '+alt+' m ✓';
+      const ab=document.getElementById('btn-adopt');
+      ab.style.background='#238636';
+      setTimeout(()=>ab.style.background='',800);
+      if(notifEnabled) new Notification('🎙 Sollhöhe: '+alt+' m',{tag:'speech-alt',silent:true,body:'Sprachbefehl erkannt'});
+      return true;
+    }
+  }
+
+  // "Sollhöhe aktuelle Höhe"
+  if(t.match(/soll\s*hoehe?\s+aktuelle?/)||t.match(/aktuelle?\s+soll\s*hoehe?/)){
+    if(currentAlt!==null){
+      adoptAlt();
+      document.getElementById('speech-last').textContent='→ '+Math.round(currentAlt)+' m ✓';
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+
+// ── QNH / Barometrische Höhe ─────────────────────────────────────────────────
+// h_baro = h_gps_kalman - gps_offset  (MSL-Näherung, WGS84-Korrektur)
+// h_PA   = h_baro + (1013.25 - QNH) × 8.43  (Druckhöhe / Pressure Altitude)
+// FL     = h_PA [m] × 3.28084 / 100  (Flight Level)
+
+window.adjQNH=function(d){
+  const el=document.getElementById('inp-qnh');
+  el.value=Math.max(900,Math.min(1100,(parseFloat(el.value)||1013)+d));
+  updateQNH();
+};
+
+window.updateQNH=function(){
+  // Recalculate with current GPS altitude if available
+  if(currentAlt!==null) updateBaroDisplay(currentAlt);
+};
+
+window.calibQNH=function(){
+  if(currentAlt===null){
+    document.getElementById('qnh-info').textContent='GPS aktiv starten!';
+    return;
+  }
+  const offset=parseFloat(document.getElementById('inp-gps-offset').value)||0;
+  const h_msl=currentAlt-offset;
+  const refAlt=parseFloat(document.getElementById('inp-ref-alt').value);
+  const baroAlt=parseFloat(document.getElementById('inp-baro-ref').value);
+
+  // If reference MSL altitude given → compute GPS offset first
+  if(!isNaN(refAlt)){
+    const newOffset=Math.round(currentAlt-refAlt);
+    document.getElementById('inp-gps-offset').value=newOffset;
+  }
+
+  // If baro altitude given → compute QNH: QNH = 1013.25 + (h_msl - h_baro) / 8.43
+  if(!isNaN(baroAlt)){
+    const h_msl_corr = !isNaN(refAlt) ? refAlt : h_msl;
+    const qnhCalc = Math.round((1013.25 + (h_msl_corr - baroAlt) / 8.43) * 10) / 10;
+    if(qnhCalc>=900&&qnhCalc<=1100){
+      document.getElementById('inp-qnh').value=qnhCalc;
+      document.getElementById('qnh-info').textContent=
+        'QNH berechnet: '+qnhCalc+' hPa · GPS-MSL: '+h_msl_corr.toFixed(0)+'m · Baro: '+baroAlt+'m · Δ='+(h_msl_corr-baroAlt).toFixed(0)+'m';
+      updateQNH();
+      return;
+    }
+  }
+
+  // Fallback: only GPS offset
+  if(!isNaN(refAlt)){
+    document.getElementById('qnh-info').textContent=
+      'GPS-Offset gesetzt: '+document.getElementById('inp-gps-offset').value+' m  (Baro-Höhe für QNH-Berechnung eingeben)';
+    updateQNH();
+  } else {
+    document.getElementById('qnh-info').textContent='Platz-MSL und/oder Baro-Höhe eingeben';
+  }
+};
+function updateBaroDisplay(h_gps){
+  const qnhVal=parseFloat(document.getElementById('inp-qnh').value)||1013.25;
+  const offset=parseFloat(document.getElementById('inp-gps-offset').value)||0;
+  const h_msl=h_gps-offset;
+  const h_pa=h_msl+(1013.25-qnhVal)*8.43;
+  const fl=Math.round(h_pa*3.28084/100);
+  const flStr='FL'+String(Math.max(0,fl)).padStart(3,'0');
+
+  document.getElementById('val-baro').textContent=h_msl.toFixed(1);
+  document.getElementById('val-baro-sub').textContent='Offset: '+offset+' m';
+  document.getElementById('val-fl').textContent=flStr;
+  document.getElementById('val-fl-sub').textContent=Math.round(h_pa)+' m / '+qnhVal+' hPa';
+  document.getElementById('qnh-info').textContent=
+    'MSL: '+h_msl.toFixed(0)+' m · PA: '+h_pa.toFixed(0)+' m · '+flStr+
+    (qnhVal!==1013.25?' · QNH '+qnhVal+' hPa':'');
+}
+
+
+// Try device barometer (Android Chrome) to auto-fill baro reference
+(function(){
+  if(!('Barometer' in window)) return;
+  try{
+    const baro = new Barometer({frequency: 0.5});
+    baro.addEventListener('reading', () => {
+      // Convert pressure to pressure altitude (ISA)
+      const p = baro.pressure;
+      const h_pa = 44330 * (1 - Math.pow(p/1013.25, 1/5.255));
+      const el = document.getElementById('inp-baro-ref');
+      if(el && !el.dataset.manuallySet) {
+        el.value = Math.round(h_pa);
+        document.getElementById('baro-sensor-status').textContent = '✓ Barometer aktiv ('+p.toFixed(1)+' hPa)';
+      }
+    });
+    baro.start();
+  } catch(e) {}
+})();
+// iOS: preload voice list (needed before first speak())
+if(window.speechSynthesis){
+  window.speechSynthesis.getVoices();
+  window.speechSynthesis.addEventListener('voiceschanged',()=>window.speechSynthesis.getVoices());
+}
+// Init
+updateNotifBar();
+if(Notification.permission==='granted') updateNotifBar();
+initChart();
+document.getElementById('adopt-preview').textContent='—';
+})();
+</script>
+</body>
+</html>
+
