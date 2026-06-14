@@ -40,7 +40,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
 #val-pred{font-size:22px;font-weight:bold;color:#e6edf3}
 #val-acc{font-size:16px;font-weight:bold;color:#e6edf3}
 #val-spd{font-size:22px;font-weight:bold;color:#e6edf3}
-#val-trk{font-size:18px;font-weight:bold;color:#e6edf3}
+#val-trk{font-size:24px;font-weight:bold;color:#e6edf3}
 
 #heat-panel{border-radius:12px;border:2px solid #30363d;padding:14px;text-align:center;margin-bottom:8px;transition:background .3s,border-color .3s}
 #heat-icon{font-size:20px;line-height:1;flex-shrink:0}
@@ -128,7 +128,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
   </div>
   <div class="instr">
     <div class="instr-lbl">+<span id="lbl-ahead">20</span>s PROGNOSE</div>
-    <div><span id="val-pred">—</span><span class="instr-unit">m</span></div>
+    <div><span id="val-pred">—</span><span class="instr-unit">ft</span></div>
     <div class="instr-sub" id="val-pred-delta"></div>
   </div>
   <div class="instr">
@@ -201,38 +201,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <div class="param-item" style="grid-column:1/-1"><span class="param-lbl">K m/s²/s  [FB7 Einzel≈0.042 · Doppel≈0.084 · Mix≈0.050]</span><div><input type="number" id="inp-burnk" value="0.050" min="0.005" max="0.5" step="0.005" style="width:72px"><span class="param-lbl"> m/s²/s</span></div></div>
   </div>
 </div>
-<div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 12px;margin-bottom:8px">
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
-    <span style="font-size:10px;color:#8b949e;letter-spacing:.1em;white-space:nowrap">QNH</span>
-    <button onclick="adjQNH(-1)" style="padding:4px 10px;font-family:'Courier New',monospace;font-size:14px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer">−</button>
-    <input type="number" id="inp-qnh" value="1013" min="900" max="1100" step="1"
-      style="width:72px;text-align:center;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:18px;font-weight:bold;padding:4px"
-      oninput="updateQNH()">
-    <button onclick="adjQNH(+1)" style="padding:4px 10px;font-family:'Courier New',monospace;font-size:14px;background:#21262d;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;cursor:pointer">+</button>
-    <span style="font-size:13px;color:#8b949e">hPa</span>
-    <button onclick="document.getElementById('inp-qnh').value=1013;updateQNH()" style="padding:4px 9px;font-family:'Courier New',monospace;font-size:11px;background:#0c1d2e;border:1px solid #1f6feb;border-radius:6px;color:#58a6ff;cursor:pointer">STD 1013</button>
-    <div style="flex:1;min-width:160px;display:flex;align-items:center;gap:6px">
-      <span style="font-size:10px;color:#8b949e;white-space:nowrap">GPS-Offset</span>
-      <input type="number" id="inp-gps-offset" value="0" step="1"
-        style="width:58px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;padding:3px 6px"
-        oninput="updateQNH()">
-      <span style="font-size:11px;color:#8b949e">m</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:6px">
-      <input type="number" id="inp-ref-alt" placeholder="Platz-MSL" step="1"
-        style="width:90px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#8b949e;font-family:'Courier New',monospace;font-size:12px;padding:3px 6px">
-      <button onclick="calibQNH()" style="padding:5px 10px;font-family:'Courier New',monospace;font-size:11px;background:#0c2d0c;border:1px solid #238636;border-radius:6px;color:#3fb950;cursor:pointer;white-space:nowrap">⊙ Abgleich</button>
-    </div>
-  </div>
-  <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:8px;padding-top:8px;border-top:1px solid #21262d">
-    <span style="font-size:10px;color:#8b949e;white-space:nowrap">Baro-Höhe</span>
-    <input type="number" id="inp-baro-ref" oninput="this.dataset.manuallySet='1'" placeholder="z.B. 1480" step="1"
-      style="width:90px;text-align:right;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#e6edf3;font-family:'Courier New',monospace;font-size:13px;padding:3px 6px">
-    <span style="font-size:11px;color:#8b949e">m  (Flytec/Baro-Instrument)</span>
-    <span id="baro-sensor-status" style="font-size:10px;color:#6e7681;margin-left:4px"></span>
-  </div>
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px;margin-bottom:2px"><div class="instr" style="background:#0d1117"><div class="instr-lbl">BARO ALT</div><div><span id="val-baro" style="font-size:22px;font-weight:bold;color:#e6edf3">—</span><span class="instr-unit">m</span></div><div class="instr-sub" id="val-baro-sub"></div></div><div class="instr" style="background:#0d1117"><div class="instr-lbl">FL · QNH</div><div><span id="val-fl" style="font-size:22px;font-weight:bold;color:#e6edf3">—</span></div><div class="instr-sub" id="val-fl-sub"></div></div></div><div id="qnh-info" style="font-size:11px;color:#8b949e;margin-top:6px;font-family:'Courier New',monospace"></div>
-</div>
+
 <div style="background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px 12px;margin-bottom:8px">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
     <div style="display:flex;align-items:center;gap:6px">
@@ -309,13 +278,38 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.1</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.2</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <script>
 (function(){
 'use strict';
+
+// ============================================================================
+//  BALLON-BRENNERSTEUERUNG  ·  GPS-Kalman-Filter  ·  PWA
+//  © Stephan Hostert
+// ----------------------------------------------------------------------------
+//  AUFBAU DIESER DATEI (von oben nach unten):
+//   1. Service Worker Registrierung (Offline-Fähigkeit, Notifications)
+//   2. Watch-Benachrichtigungen (Web Notifications via Service Worker)
+//   3. Sprachausgabe (SpeechSynthesis) + gemeinsame Alarmlogik (fireAlert)
+//   4. Kalman-Filter (3D-Zustand: Höhe h, Steigrate v, Beschleunigung a)
+//   5. App-Zustand (globale Variablen) + Höhendiagramm (Chart.js)
+//   6. GPS-Verarbeitung (onGPS) + 1-Hz-Anzeige-Timer (renderInstruments)
+//   7. Wake-Lock (Bildschirm an), Start/Stop/Export-Steuerung
+//   8. Mikrofon: Brennererkennung + automatische K-Kalibrierung
+//   9. Spracherkennung ("Sollhöhe XXXX" / "Aktuelle Sollhöhe")
+//
+//  ZENTRALE GRÖSSEN:
+//   h, v, a   – Kalman-Zustand: Höhe[m], Steigrate[m/s], Beschleunigung[m/s²]
+//   targetAlt – Sollhöhe [m]
+//   K (burnK) – Brennerkoeffizient [m/s² Beschleunigungsänderung pro
+//               Sekunde Brennerbetrieb], wird per Mikrofon kalibriert
+//   thermalLag (inp-lag) – Zeitverzug [s] zwischen Brennerbetrieb und
+//               spürbarer Auftriebsänderung (Trägheit der heißen Luft)
+// ============================================================================
+
 
 // ── Service Worker ────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(()=>{});
@@ -498,6 +492,24 @@ function makeKalman(sa){
       if(!this.x) return null;
       const[h,v,a]=this.x;
       return h+v*T+0.5*a*T*T;
+    },
+    // Reiner Vorhersageschritt (kein Messupdate) – propagiert x und P um dt
+    // Sekunden gemäß Bewegungsmodell weiter. Wird vom 1-Hz-Anzeige-Timer
+    // zwischen echten GPS-Fixes aufgerufen, um die Live-Werte zu glätten.
+    predict(dt){
+      if(this.x===null) return;
+      const[h,v,a]=this.x,dh=0.5*dt*dt;
+      const P=this.P,sa=this.sa,d2=dt*dt,d3=d2*dt,d4=d3*dt;
+      const Q=[[d4/4*sa*sa,d3/2*sa*sa,d2/2*sa*sa],[d3/2*sa*sa,d2*sa*sa,dt*sa*sa],[d2/2*sa*sa,dt*sa*sa,sa*sa]];
+      const fp=[
+        [P[0][0]+dt*P[1][0]+dh*P[2][0],P[0][1]+dt*P[1][1]+dh*P[2][1],P[0][2]+dt*P[1][2]+dh*P[2][2]],
+        [P[1][0]+dt*P[2][0],P[1][1]+dt*P[2][1],P[1][2]+dt*P[2][2]],
+        [...P[2]]
+      ];
+      const pp=fp.map(r=>[r[0]+r[1]*dt+r[2]*dh,r[1]+r[2]*dt,r[2]]);
+      for(let i=0;i<3;i++) for(let j=0;j<3;j++) pp[i][j]+=Q[i][j];
+      this.x=[h+v*dt+a*dh, v+a*dt, a];
+      this.P=pp;
     }
   };
 }
@@ -508,6 +520,8 @@ function trackStr(h){ return h!==null&&h!==undefined ? DIRS[Math.round(h/22.5)%1
 
 // ── App State ─────────────────────────────────────────────────────────────────
 let kf=null,watchId=null,wakeLock=null,lastTime=null;
+let displayTime=null;     // Zeitpunkt des letzten Anzeige-Updates (predict oder echter Fix)
+let displayTimer=null;    // 1-Hz-Timer-Handle für die geglättete Live-Anzeige
 let fixes=0,elapsed=0,heatCycles=0,heatDur=0,prevHeat=false;
 let targetAlt=1500;
 let currentAlt=null;  // latest Kalman altitude
@@ -627,6 +641,61 @@ window.zoomOut=function(){
 };
 
 // ── GPS Callback ──────────────────────────────────────────────────────────────
+const M_TO_FT=3.28084; // Meter → Fuß (für Prognose-Anzeige)
+
+// Aktualisiert die Live-Instrumente (Höhe, Vario, Beschleunigung, Prognose)
+// und die Vorschau im "Aktuelle Höhe übernehmen"-Button.
+// h, v, a    : aktueller Kalman-Zustand (Höhe[m], Steigrate[m/s], Beschl.[m/s²])
+// pred       : Kalman-Prognosehöhe [m] in "ahead" Sekunden (oder null)
+// ahead      : Prognosehorizont [s] (für die Label-Anzeige "+XXs PROGNOSE")
+function renderInstruments(h, v, a, pred, ahead){
+  currentAlt=h;
+  document.getElementById('lbl-ahead').textContent=ahead;
+  document.getElementById('adopt-preview').textContent=h.toFixed(0);
+
+  document.getElementById('val-alt').textContent=h.toFixed(1);
+  document.getElementById('val-alt-delta').textContent=(h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll';
+
+  const vEl=document.getElementById('val-vario');
+  vEl.textContent=(v>=0?'+':'')+v.toFixed(2);
+  vEl.style.color=v>0.3?'#3fb950':v<-0.3?'#f85149':'#c9d1d9';
+  document.getElementById('val-vario-trend').textContent=v>0.2?'▲ Steigend':v<-0.2?'▼ Sinkend':'→ Stabil';
+
+  document.getElementById('val-acc').textContent=(a>=0?'+':'')+a.toFixed(3);
+
+  // Prognosehöhe wird in Fuß angezeigt (1 m = 3.28084 ft) – nur Darstellung,
+  // alle internen Berechnungen bleiben in Metern.
+  document.getElementById('val-pred').textContent=pred!==null?Math.round(pred*M_TO_FT):'—';
+  document.getElementById('val-pred-delta').textContent=pred!==null?(pred-targetAlt>=0?'+':'')+Math.round((pred-targetAlt)*M_TO_FT)+' ft vs Soll':'';
+}
+
+
+// Startet den 1-Hz-Anzeige-Timer. Fuehrt jede Sekunde einen reinen
+// Kalman-'predict'-Schritt aus (siehe kf.predict oben) und aktualisiert
+// damit die Live-Instrumente, auch wenn echte GPS-Fixes seltener eintreffen
+// (GPS liefert oft nur alle 2-5s eine neue Position - Hardwarelimit).
+// Das Hoehen-Log fuer Diagramm/CSV bleibt unveraendert an echte GPS-Fixes
+// gekoppelt; nur die Live-Anzeige wird dadurch geglaettet.
+function startDisplayTimer(){
+  stopDisplayTimer();
+  displayTime=Date.now();
+  displayTimer=setInterval(()=>{
+    if(!kf||!kf.x) return;
+    const now=Date.now();
+    const dt=(now-displayTime)/1000;
+    displayTime=now;
+    if(dt<=0) return;
+    // Reiner Vorhersageschritt - keine Messkorrektur, kein Logging
+    kf.predict(dt);
+    const{ahead}=getP();
+    const[h,v,a]=kf.x;
+    renderInstruments(h, v, a, kf.future(ahead), ahead);
+  }, 1000);
+}
+function stopDisplayTimer(){
+  if(displayTimer){ clearInterval(displayTimer); displayTimer=null; }
+}
+
 function onGPS(pos){
   const now=pos.timestamp;
   const rawH=pos.coords.altitude;
@@ -675,6 +744,7 @@ function onGPS(pos){
   lastTime=now;
   if(!kf) kf=makeKalman(0.05);
   kf.update(rawH,dt,R);
+  displayTime=Date.now(); // Anzeige-Timer ab hier neu takten
   if(kf.x){
     kfAHistory.push(kf.x[2]); if(kfAHistory.length>20) kfAHistory.shift();
     kfVHistory.push(kf.x[1]); if(kfVHistory.length>20) kfVHistory.shift();
@@ -690,20 +760,11 @@ function onGPS(pos){
   const pred=kf.future(ahead);
   currentAlt=h;
 
-  // Update adopt button preview
-  document.getElementById('adopt-preview').textContent=h.toFixed(0);
-  updateBaroDisplay(h);
-
-  // Instruments
-  document.getElementById('val-alt').textContent=h.toFixed(1);
-  document.getElementById('val-alt-delta').textContent=(h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll';
-  const vEl=document.getElementById('val-vario');
-  vEl.textContent=(v>=0?'+':'')+v.toFixed(2);
-  vEl.style.color=v>0.3?'#3fb950':v<-0.3?'#f85149':'#c9d1d9';
-  document.getElementById('val-vario-trend').textContent=v>0.2?'▲ Steigend':v<-0.2?'▼ Sinkend':'→ Stabil';
-  document.getElementById('val-acc').textContent=(a>=0?'+':'')+a.toFixed(3);
-  document.getElementById('val-pred').textContent=pred!==null?pred.toFixed(1):'—';
-  document.getElementById('val-pred-delta').textContent=pred!==null?(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m vs Soll':'';
+  // Live-Instrumente aktualisieren (Höhe, Vario, Beschl., Prognose).
+  // Ausgelagert in renderInstruments(), damit der 1-Hz-Anzeige-Timer
+  // zwischen echten GPS-Fixes dieselbe Logik mit prädizierten Werten
+  // verwenden kann (siehe weiter unten "Anzeige-Timer").
+  renderInstruments(h, v, a, pred, ahead);
 
   // Heat decision + burn duration estimate
   // Physics: Δa = 2*(targetAlt - pred) / T²  →  t_burn = Δa / K
@@ -716,15 +777,30 @@ function onGPS(pos){
     // Burn duration: additional acceleration needed / K
     // Δa_needed = 2 * deficit / T²
     if(def>0){
-      const daNeed=2*def/(ahead*ahead);
       const maxBurn=parseFloat(document.getElementById("inp-maxburn").value)||12;
       const thermalLag=parseFloat(document.getElementById("inp-lag").value)||10;
-      const maxVario=2.5;
-      // Vario cap: v + K*t*thermalLag <= 2.5 => t <= (2.5-v)/(K*thermalLag)
-      const tVarioCap=burnK>0&&thermalLag>0 ? Math.max(1,(maxVario-v)/(burnK*thermalLag)) : maxBurn;
+      const maxVario=2.5; // harte Obergrenze Steigrate [m/s]
+
+      // effT: Zeitspanne innerhalb des Prognosehorizonts, in der eine JETZT
+      // ausgelöste Zusatzbeschleunigung tatsächlich wirkt (nach Abzug der
+      // thermischen Verzögerung). Mindestens 1s, um Division durch 0 zu
+      // vermeiden, wenn ahead <= thermalLag konfiguriert ist.
+      const effT=Math.max(1, ahead-thermalLag);
+
+      // Benötigte Zusatzbeschleunigung, um das Höhendefizit "def" am
+      // Prognosehorizont durch effT Sekunden Beschleunigung auszugleichen.
+      const daNeed=2*def/(effT*effT);
       const tRaw=Math.round(daNeed/burnK);
+
+      // Steigraten-Obergrenze: v_neu = v + K*burnSec*effT <= maxVario
+      // → burnSec <= (maxVario-v) / (K*effT)
+      const tVarioCap=burnK>0 ? Math.max(0,(maxVario-v)/(burnK*effT)) : maxBurn;
+
       burnSec=Math.max(1,Math.min(maxBurn,Math.min(tRaw,Math.ceil(tVarioCap))));
-      const predictedVario=Math.min(maxVario, v+burnK*burnSec*thermalLag);
+
+      // Vorhersage der resultierenden Steigrate nach dem Brennvorgang
+      const deltaA=burnK*burnSec;             // Zusatzbeschleunigung [m/s²]
+      const predictedVario=Math.min(maxVario, v+deltaA*effT);
     }
     if(def>tol){
       state='heat';htxt='JETZT HEIZEN!';needsHeat=true;
@@ -810,13 +886,34 @@ function onGPSError(err){
   document.getElementById('btn-stop').style.display='none';
 }
 
+// Fordert den Screen-Wake-Lock an, damit das Display während der Fahrt
+// nicht automatisch abdunkelt/sperrt. Der Browser kann den Wake Lock jedoch
+// jederzeit von sich aus wieder freigeben (z.B. kurzer App-Wechsel) – daher
+// wird diese Funktion nicht nur einmal, sondern auch periodisch erneut
+// aufgerufen (siehe wakeLockTimer weiter unten).
 async function requestWakeLock(){
-  if('wakeLock' in navigator){
-    try{
-      wakeLock=await navigator.wakeLock.request('screen');
-      wakeLock.addEventListener('release',()=>{wakeLock=null;});
-    }catch(e){}
+  if(!('wakeLock' in navigator)) return;
+  // Bereits aktiven Lock nicht doppelt anfordern
+  if(wakeLock && !wakeLock.released) return;
+  try{
+    wakeLock=await navigator.wakeLock.request('screen');
+    wakeLock.addEventListener('release',()=>{wakeLock=null;});
+  }catch(e){
+    // z.B. NotAllowedError, wenn der Tab nicht im Vordergrund ist – ignorieren,
+    // der periodische Timer versucht es einfach erneut.
   }
+}
+
+// Periodischer "Wachhalte"-Timer: solange GPS aktiv ist, wird alle 20s
+// versucht, den Wake Lock erneut zu setzen, falls er zwischenzeitlich vom
+// System freigegeben wurde.
+let wakeLockTimer=null;
+function startWakeLockTimer(){
+  stopWakeLockTimer();
+  wakeLockTimer=setInterval(requestWakeLock, 20000);
+}
+function stopWakeLockTimer(){
+  if(wakeLockTimer){ clearInterval(wakeLockTimer); wakeLockTimer=null; }
 }
 
 function getP(){
@@ -840,7 +937,7 @@ window.startGPS=function(){
   kfAHistory=[];kfVHistory=[];kHistory=[];aAfterBurnPending=null;burnActive=false;burnStart=null;
   logBurner=[];flightStartTime=null;calibPhaseActive=false;
   currentAlt=null;
-  initChart();requestWakeLock();setLive(true);
+  initChart();requestWakeLock();startWakeLockTimer();startDisplayTimer();setLive(true);
   document.getElementById('btn-gps').style.display='none';
   document.getElementById('btn-stop').style.display='block';
   document.getElementById('badge').textContent='● GPS AKTIV';
@@ -854,6 +951,8 @@ window.startGPS=function(){
 window.stopGPS=function(){
   if(watchId!==null){navigator.geolocation.clearWatch(watchId);watchId=null;}
   if(wakeLock){wakeLock.release();wakeLock=null;}
+  stopWakeLockTimer();
+  stopDisplayTimer();
   kf=null;lastTime=null;lastAlertState='inactive';
   document.getElementById('btn-gps').style.display='block';
   document.getElementById('btn-stop').style.display='none';
@@ -910,27 +1009,41 @@ window.exportCSV=function(){
 
 
 
-// Zeige persistente Notification bei Displaysperre (Watch bleibt informiert)
+// Reagiert auf Wechsel zwischen Vordergrund/Hintergrund bzw. Displaysperre.
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState==='hidden' && watchId!==null){
-    // Screen locked while GPS running → show persistent status notification
-    swNotify(
-      '🔵 Brennersteuerung aktiv',
-      'GPS läuft · Entsperren für Live-Anzeige · Heizsignal kommt als Vibration',
-      true,  // silent = true for status, loud for heat alerts
-      []
-    );
-  }
-  if(document.visibilitystate==='visible' && watchId!==null){
-    if(micActive){
-      if(micStream) micStream.getTracks().forEach(t=>t.stop());
-      if(audioCtx) audioCtx.close();
+  if(document.visibilityState==='hidden'){
+    // Display gesperrt / App in den Hintergrund: solange GPS aktiv ist,
+    // eine stille Status-Notification senden, damit auf der Watch sichtbar
+    // bleibt, dass die Steuerung weiterläuft. Mikrofon und GPS laufen
+    // bewusst WEITER (siehe Kommentar oben).
+    if(watchId!==null){
+      swNotify(
+        '🔵 Brennersteuerung aktiv',
+        'GPS läuft · Entsperren für Live-Anzeige · Heizsignal kommt als Vibration',
+        true,
+        []
+      );
     }
-    requestWakeLock();
+  } else {
+    // App wieder im Vordergrund:
+    // 1) Wake Lock erneut anfordern (wurde ggf. vom System freigegeben)
+    if(watchId!==null) requestWakeLock();
+    // 2) AudioContext reaktivieren, falls vom System pausiert –
+    //    das Mikrofon bleibt dadurch ohne erneuten Tastendruck aktiv
+    if(micActive && audioCtx && audioCtx.state==='suspended'){
+      audioCtx.resume().catch(()=>{});
+    }
   }
 });
-window.addEventListener('pagehide', ()=>{
-  if(micActive) stopMic();
+
+// "pagehide" feuert u.a. beim echten Schließen/Neuladen der Seite.
+// Das Mikrofon wird hier NICHT mehr automatisch gestoppt (siehe Kommentar
+// oben) – nur beim expliziten endgültigen Verlassen der Seite werden die
+// Audio-Ressourcen freigegeben, um den Browser nicht zu blockieren.
+window.addEventListener('pagehide', (e)=>{
+  if(micActive && e.persisted===false){
+    stopMic();
+  }
 });
 
 
@@ -1182,96 +1295,14 @@ function processVoiceCmd(raw){
 
 
 
-// ── QNH / Barometrische Höhe ─────────────────────────────────────────────────
-// h_baro = h_gps_kalman - gps_offset  (MSL-Näherung, WGS84-Korrektur)
-// h_PA   = h_baro + (1013.25 - QNH) × 8.43  (Druckhöhe / Pressure Altitude)
-// FL     = h_PA [m] × 3.28084 / 100  (Flight Level)
-
-window.adjQNH=function(d){
-  const el=document.getElementById('inp-qnh');
-  el.value=Math.max(900,Math.min(1100,(parseFloat(el.value)||1013)+d));
-  updateQNH();
-};
-
-window.updateQNH=function(){
-  // Recalculate with current GPS altitude if available
-  if(currentAlt!==null) updateBaroDisplay(currentAlt);
-};
-
-window.calibQNH=function(){
-  if(currentAlt===null){
-    document.getElementById('qnh-info').textContent='GPS aktiv starten!';
-    return;
-  }
-  const offset=parseFloat(document.getElementById('inp-gps-offset').value)||0;
-  const h_msl=currentAlt-offset;
-  const refAlt=parseFloat(document.getElementById('inp-ref-alt').value);
-  const baroAlt=parseFloat(document.getElementById('inp-baro-ref').value);
-
-  // If reference MSL altitude given → compute GPS offset first
-  if(!isNaN(refAlt)){
-    const newOffset=Math.round(currentAlt-refAlt);
-    document.getElementById('inp-gps-offset').value=newOffset;
-  }
-
-  // If baro altitude given → compute QNH: QNH = 1013.25 + (h_msl - h_baro) / 8.43
-  if(!isNaN(baroAlt)){
-    const h_msl_corr = !isNaN(refAlt) ? refAlt : h_msl;
-    const qnhCalc = Math.round((1013.25 + (h_msl_corr - baroAlt) / 8.43) * 10) / 10;
-    if(qnhCalc>=900&&qnhCalc<=1100){
-      document.getElementById('inp-qnh').value=qnhCalc;
-      document.getElementById('qnh-info').textContent=
-        'QNH berechnet: '+qnhCalc+' hPa · GPS-MSL: '+h_msl_corr.toFixed(0)+'m · Baro: '+baroAlt+'m · Δ='+(h_msl_corr-baroAlt).toFixed(0)+'m';
-      updateQNH();
-      return;
-    }
-  }
-
-  // Fallback: only GPS offset
-  if(!isNaN(refAlt)){
-    document.getElementById('qnh-info').textContent=
-      'GPS-Offset gesetzt: '+document.getElementById('inp-gps-offset').value+' m  (Baro-Höhe für QNH-Berechnung eingeben)';
-    updateQNH();
-  } else {
-    document.getElementById('qnh-info').textContent='Platz-MSL und/oder Baro-Höhe eingeben';
-  }
-};
-function updateBaroDisplay(h_gps){
-  const qnhVal=parseFloat(document.getElementById('inp-qnh').value)||1013.25;
-  const offset=parseFloat(document.getElementById('inp-gps-offset').value)||0;
-  const h_msl=h_gps-offset;
-  const h_pa=h_msl+(1013.25-qnhVal)*8.43;
-  const fl=Math.round(h_pa*3.28084/100);
-  const flStr='FL'+String(Math.max(0,fl)).padStart(3,'0');
-
-  document.getElementById('val-baro').textContent=h_msl.toFixed(1);
-  document.getElementById('val-baro-sub').textContent='Offset: '+offset+' m';
-  document.getElementById('val-fl').textContent=flStr;
-  document.getElementById('val-fl-sub').textContent=Math.round(h_pa)+' m / '+qnhVal+' hPa';
-  document.getElementById('qnh-info').textContent=
-    'MSL: '+h_msl.toFixed(0)+' m · PA: '+h_pa.toFixed(0)+' m · '+flStr+
-    (qnhVal!==1013.25?' · QNH '+qnhVal+' hPa':'');
-}
 
 
-// Try device barometer (Android Chrome) to auto-fill baro reference
-(function(){
-  if(!('Barometer' in window)) return;
-  try{
-    const baro = new Barometer({frequency: 0.5});
-    baro.addEventListener('reading', () => {
-      // Convert pressure to pressure altitude (ISA)
-      const p = baro.pressure;
-      const h_pa = 44330 * (1 - Math.pow(p/1013.25, 1/5.255));
-      const el = document.getElementById('inp-baro-ref');
-      if(el && !el.dataset.manuallySet) {
-        el.value = Math.round(h_pa);
-        document.getElementById('baro-sensor-status').textContent = '✓ Barometer aktiv ('+p.toFixed(1)+' hPa)';
-      }
-    });
-    baro.start();
-  } catch(e) {}
-})();
+
+
+
+
+
+
 // iOS: preload voice list (needed before first speak())
 if(window.speechSynthesis){
   window.speechSynthesis.getVoices();
