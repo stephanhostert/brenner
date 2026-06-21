@@ -128,7 +128,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
   </div>
   <div class="instr">
     <div class="instr-lbl">+<span id="lbl-ahead">20</span>s PROGNOSE</div>
-    <div><span id="val-pred">—</span><span class="instr-unit">ft</span></div>
+    <div><span id="val-pred">—</span><span class="instr-unit">m</span></div>
     <div class="instr-sub" id="val-pred-delta"></div>
   </div>
   <div class="instr">
@@ -199,6 +199,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <div class="param-item"><span class="param-lbl">Vorausschau</span><div><input type="number" id="inp-ahead" value="20" min="5" max="60"><span class="param-lbl"> s</span></div></div>
     <div class="param-item"><span class="param-lbl">Max. Brenndauer</span><div><input type="number" id="inp-maxburn" value="12" min="3" max="30"><span class="param-lbl"> s</span></div></div>
     <div class="param-item" style="grid-column:1/-1"><span class="param-lbl">K m/s²/s  [FB7 Einzel≈0.042 · Doppel≈0.084 · Mix≈0.050]</span><div><input type="number" id="inp-burnk" value="0.050" min="0.005" max="0.5" step="0.005" style="width:72px"><span class="param-lbl"> m/s²/s</span></div></div>
+    <div class="param-item" style="grid-column:1/-1"><span class="param-lbl">Filter-Reaktion σₐ  [höher = schnelleres Vario, näher am Baro]</span><div><input type="number" id="inp-filter-sa" value="0.15" min="0.02" max="0.5" step="0.01" style="width:72px"><span class="param-lbl"> m/s²</span></div></div>
   </div>
 </div>
 
@@ -278,7 +279,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.2</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.3</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -528,7 +529,14 @@ let currentAlt=null;  // latest Kalman altitude
 
 // Full log arrays (unlimited)
 let logRaw=[],logH=[],logP=[],logT=[],logSpd=[],logTrk=[];
-let logBurner=[];    // 0/1 per GPS fix: burner active?
+let logBurner=[];   // 0/1 pro GPS-Fix: Brenner aktiv?
+// Zusätzliche, vollständige Datenpunkte pro GPS-Fix (für CSV-Export):
+let logLat=[],logLon=[];      // GPS-Koordinaten [°]
+let logAcc=[];                // GPS-Höhengenauigkeit [m]
+let logV=[],logA=[];          // Kalman-Steigrate [m/s] und -Beschleunigung [m/s²]
+let logState=[];              // Heizsignal-Zustand zum Zeitpunkt des Fixes
+let logBurnSec=[];            // empfohlene Brenndauer zum Zeitpunkt des Fixes [s]
+let logK=[];                  // zu diesem Zeitpunkt verwendeter Brennerkoeffizient K
 let kfAHistory=[];   // recent Kalman accelerations for K calibration
 let kfVHistory=[];   // recent Kalman velocities for vario-based K calibration
 let flightStartTime=null; // for 10-min calibration phase
@@ -536,7 +544,7 @@ let calibPhaseActive=false;
 let kHistory=[];     // measured K values
 let aAfterBurnPending=null; // pending K measurement after burn
 
-const VIEW=300; // default visible window (seconds)
+const VIEW=900; // Live-Fenster im Diagramm: 15 Minuten (15*60s), läuft im Live-Modus automatisch mit
 let isLive=true;
 let ch=null;
 
@@ -653,8 +661,12 @@ function renderInstruments(h, v, a, pred, ahead){
   document.getElementById('lbl-ahead').textContent=ahead;
   document.getElementById('adopt-preview').textContent=h.toFixed(0);
 
+  // Aktuelle Höhe: Hauptanzeige in Metern, zusätzlich die reale (aktuelle,
+  // NICHT die Prognose-) Höhe in Fuß in der Subzeile (1 m = 3.28084 ft).
+  const altFt=Math.round(h*M_TO_FT);
   document.getElementById('val-alt').textContent=h.toFixed(1);
-  document.getElementById('val-alt-delta').textContent=(h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll';
+  document.getElementById('val-alt-delta').textContent=
+    (h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll · '+altFt+' ft';
 
   const vEl=document.getElementById('val-vario');
   vEl.textContent=(v>=0?'+':'')+v.toFixed(2);
@@ -663,10 +675,10 @@ function renderInstruments(h, v, a, pred, ahead){
 
   document.getElementById('val-acc').textContent=(a>=0?'+':'')+a.toFixed(3);
 
-  // Prognosehöhe wird in Fuß angezeigt (1 m = 3.28084 ft) – nur Darstellung,
-  // alle internen Berechnungen bleiben in Metern.
-  document.getElementById('val-pred').textContent=pred!==null?Math.round(pred*M_TO_FT):'—';
-  document.getElementById('val-pred-delta').textContent=pred!==null?(pred-targetAlt>=0?'+':'')+Math.round((pred-targetAlt)*M_TO_FT)+' ft vs Soll':'';
+  // Prognosehöhe bleibt in Metern (wie alle internen Berechnungen) –
+  // nur die AKTUELLE Höhe oben wird zusätzlich in Fuß angezeigt.
+  document.getElementById('val-pred').textContent=pred!==null?pred.toFixed(1):'—';
+  document.getElementById('val-pred-delta').textContent=pred!==null?(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m vs Soll':'';
 }
 
 
@@ -694,6 +706,173 @@ function startDisplayTimer(){
 }
 function stopDisplayTimer(){
   if(displayTimer){ clearInterval(displayTimer); displayTimer=null; }
+}
+
+
+// ── Brenndauer-Countdown (rein visuell) ───────────────────────────────────────
+// Zeigt die empfohlene Brenndauer nicht nur statisch an, sondern zählt sie
+// Sekunde für Sekunde herunter, solange keine neue Empfehlung eintrifft.
+// Trifft eine neue, von computeAndRenderHeat() berechnete Empfehlung ein
+// (z.B. nach dem nächsten GPS-Fix), wird der Countdown auf den neuen Wert
+// zurückgesetzt.
+let burnCountdownSec=null, burnCountdownTimer=null;
+
+function renderBurnCountdown(){
+  const el=document.getElementById('burn-dur-val');
+  if(el) el.textContent=burnCountdownSec;
+}
+
+function startBurnCountdown(sec){
+  stopBurnCountdown();
+  burnCountdownSec=sec;
+  renderBurnCountdown();
+  burnCountdownTimer=setInterval(()=>{
+    burnCountdownSec=Math.max(0,burnCountdownSec-1);
+    renderBurnCountdown();
+    if(burnCountdownSec<=0) stopBurnCountdown();
+  },1000);
+}
+
+function stopBurnCountdown(){
+  if(burnCountdownTimer){ clearInterval(burnCountdownTimer); burnCountdownTimer=null; }
+  burnCountdownSec=null;
+}
+
+// ============================================================================
+// Heizbedarfs-Berechnung + UI-Update für das Heizsignal-Panel
+// ----------------------------------------------------------------------------
+// Wird aufgerufen:
+//   • nach jedem echten GPS-Fix (onGPS)             → MIT Statistik-Update
+//   • sofort nach jedem Brennerstoß, sobald der      → OHNE Statistik-Update
+//     Brenner ausgeht (siehe recomputeHeatNow(),
+//     ausgelöst aus der Mikrofon-Erkennung)
+//
+// Physik: Δa_erf = 2·(targetAlt-pred) / effT²  →  burnSec = Δa_erf / K
+//   effT = ahead - thermalLag  (siehe Kommentare im Funktionskörper)
+//
+// h, v, a    : aktueller Kalman-Zustand (Höhe[m], Steigrate[m/s], Beschl.[m/s²])
+// pred       : Kalman-Prognosehöhe [m] in "ahead" Sekunden (oder null)
+// ahead, tol, burnK : aktuelle Parametereinstellungen (siehe getP())
+//
+// Rückgabe: {state, needsHeat, burnSec} – needsHeat wird vom Aufrufer
+// genutzt, um die Heizzyklen-/Brenndauer-Statistik fortzuschreiben.
+// ============================================================================
+function computeAndRenderHeat(h, v, a, pred, ahead, tol, burnK){
+  let state='ok', htxt='', detail='', barPct=50, needsHeat=false;
+  let burnSec=null, predictedVario=null;
+
+  if(pred!==null){
+    const def=targetAlt-pred; // Höhendefizit am Prognosehorizont [m]
+    barPct=Math.max(0,Math.min(100,((pred-targetAlt+tol)/(2*tol))*100));
+
+    if(def>0){
+      const maxBurn=parseFloat(document.getElementById('inp-maxburn').value)||12;
+      const thermalLag=parseFloat(document.getElementById('inp-lag').value)||10;
+      const maxVario=2.5; // harte Obergrenze Steigrate [m/s]
+
+      // effT: Zeitspanne innerhalb des Prognosehorizonts, in der eine JETZT
+      // ausgelöste Zusatzbeschleunigung tatsächlich wirkt (nach Abzug der
+      // thermischen Verzögerung). Mindestens 1s, um Division durch 0 zu
+      // vermeiden, wenn ahead <= thermalLag konfiguriert ist.
+      const effT=Math.max(1, ahead-thermalLag);
+
+      // Benötigte Zusatzbeschleunigung, um das Höhendefizit "def" am
+      // Prognosehorizont durch effT Sekunden Beschleunigung auszugleichen.
+      const daNeed=2*def/(effT*effT);
+      const tRaw=Math.round(daNeed/burnK);
+
+      // Steigraten-Obergrenze: v_neu = v + K*burnSec*effT <= maxVario
+      // → burnSec <= (maxVario-v) / (K*effT)
+      const tVarioCap=burnK>0 ? Math.max(0,(maxVario-v)/(burnK*effT)) : maxBurn;
+
+      burnSec=Math.max(1,Math.min(maxBurn,Math.min(tRaw,Math.ceil(tVarioCap))));
+
+      // Vorhersage der resultierenden Steigrate nach dem Brennvorgang
+      const deltaA=burnK*burnSec;
+      predictedVario=Math.min(maxVario, v+deltaA*effT);
+    }
+
+    if(def>tol){
+      state='heat'; htxt='JETZT HEIZEN!'; needsHeat=true;
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
+    } else if(def>tol*0.25){
+      state='warn'; htxt='HEIZEN EMPFOHLEN'; needsHeat=true;
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
+    } else if(h>targetAlt+tol){
+      state='high'; htxt='ZU HOCH – BRENNER AUS';
+      detail='Aktuelle Höhe: '+h.toFixed(1)+' m · '+(h-targetAlt).toFixed(1)+' m über Sollhöhe';
+      burnSec=null;
+    } else {
+      state='ok'; htxt='HÖHE STABIL';
+      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · Δ '+(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m';
+      burnSec=null;
+    }
+  }
+
+  lastBurnSec=burnSec;
+  fireAlert(state, detail, burnSec);
+
+  // --- UI: Ampel / Text / Balken --------------------------------------------
+  const S={
+    ok: {bg:'#0d2615',dot:'#3fb950',txt:'#3fb950',bdr:'#238636',icon:'🟢',bar:'#3fb950'},
+    warn:{bg:'#2b1d0e',dot:'#d29922',txt:'#d29922',bdr:'#9e6a03',icon:'🟡',bar:'#d29922'},
+    heat:{bg:'#2d0f0f',dot:'#f85149',txt:'#f85149',bdr:'#da3633',icon:'🔴',bar:'#f85149'},
+    high:{bg:'#0c1d2e',dot:'#58a6ff',txt:'#58a6ff',bdr:'#1f6feb',icon:'🔵',bar:'#58a6ff'}
+  };
+  const s=S[state]||S.ok;
+  const panel=document.getElementById('heat-panel');
+  panel.style.background=s.bg; panel.style.borderColor=s.bdr;
+  document.getElementById('heat-icon').textContent=s.icon;
+  const tEl=document.getElementById('heat-txt'); tEl.style.color=s.txt; tEl.textContent=htxt;
+  document.getElementById('heat-detail').textContent=detail;
+  document.getElementById('heat-bar').style.width=barPct+'%';
+  document.getElementById('heat-bar').style.background=s.bar;
+  document.getElementById('heat-bar-wrap').style.display='block';
+
+  // --- UI: Empfohlene Brenndauer inkl. Countdown ----------------------------
+  const bdWrap=document.getElementById('burn-dur-wrap');
+  if(burnSec!==null && (state==='heat'||state==='warn')){
+    bdWrap.style.display='block';
+    document.getElementById('burn-dur-val').style.color=state==='heat'?'#f85149':'#d29922';
+    document.getElementById('burn-dur-sub').textContent=
+      predictedVario!==null ? '→ ~'+predictedVario.toFixed(1)+' m/s Steigrate' : '';
+    // Frische Empfehlung → Countdown neu starten (zählt danach Sekunde für
+    // Sekunde herunter, bis die nächste Neuberechnung eintrifft).
+    startBurnCountdown(burnSec);
+  } else {
+    bdWrap.style.display='none';
+    stopBurnCountdown();
+  }
+
+  const badge=document.getElementById('badge');
+  badge.textContent=state==='heat'?'● HEIZEN!':'● GPS AKTIV';
+  badge.style.background=state==='heat'?'#2d0f0f':'#0c1d2e';
+  badge.style.color=state==='heat'?'#f85149':'#58a6ff';
+  badge.style.borderColor=state==='heat'?'#da3633':'#1f6feb';
+
+  return {state, needsHeat, burnSec};
+}
+
+// Erzwingt eine SOFORTIGE Neuberechnung des Heizbedarfs außerhalb des
+// normalen GPS-Fix-Takts. Wird direkt aufgerufen, sobald die
+// Mikrofon-Erkennung registriert, dass der Brenner gerade ausgegangen ist –
+// damit die Empfehlung ("noch X Sekunden nötig" bzw. "reicht jetzt") nicht
+// bis zum nächsten GPS-Fix (ggf. mehrere Sekunden) veraltet bleibt.
+// Nutzt eine Kalman-Vorhersage bis zum aktuellen Zeitpunkt (keine neue
+// Messung), aktualisiert NICHT die Flugstatistik (kein Fix = kein "echter"
+// Messzeitpunkt).
+function recomputeHeatNow(){
+  if(!kf||!kf.x) return;
+  const now=Date.now();
+  if(displayTime!==null){
+    const dt=(now-displayTime)/1000;
+    if(dt>0){ kf.predict(dt); displayTime=now; }
+  }
+  const{tol,ahead,burnK}=getP();
+  const[h,v,a]=kf.x;
+  const pred=kf.future(ahead);
+  renderInstruments(h, v, a, pred, ahead);
+  computeAndRenderHeat(h, v, a, pred, ahead, tol, burnK);
 }
 
 function onGPS(pos){
@@ -742,7 +921,7 @@ function onGPS(pos){
   let dt=2;
   if(lastTime!==null) dt=Math.min((now-lastTime)/1000,10);
   lastTime=now;
-  if(!kf) kf=makeKalman(0.05);
+  if(!kf) kf=makeKalman(getP().filterSa);
   kf.update(rawH,dt,R);
   displayTime=Date.now(); // Anzeige-Timer ab hier neu takten
   if(kf.x){
@@ -766,109 +945,41 @@ function onGPS(pos){
   // verwenden kann (siehe weiter unten "Anzeige-Timer").
   renderInstruments(h, v, a, pred, ahead);
 
-  // Heat decision + burn duration estimate
-  // Physics: Δa = 2*(targetAlt - pred) / T²  →  t_burn = Δa / K
-  // K = Brennerkoeffizient (m/s² added acceleration per second of burn)
-  let state='ok',htxt='',detail='',barPct=50,needsHeat=false;
-  let burnSec=null;
-  if(pred!==null){
-    const def=targetAlt-pred;
-    barPct=Math.max(0,Math.min(100,((pred-targetAlt+tol)/(2*tol))*100));
-    // Burn duration: additional acceleration needed / K
-    // Δa_needed = 2 * deficit / T²
-    if(def>0){
-      const maxBurn=parseFloat(document.getElementById("inp-maxburn").value)||12;
-      const thermalLag=parseFloat(document.getElementById("inp-lag").value)||10;
-      const maxVario=2.5; // harte Obergrenze Steigrate [m/s]
+  // Heizbedarf berechnen und Heizsignal-Panel aktualisieren. Ausgelagert in
+  // computeAndRenderHeat(), damit dieselbe Logik sowohl nach jedem echten
+  // GPS-Fix als auch SOFORT nach jedem Brennerstoß (Mikrofon-Erkennung,
+  // siehe recomputeHeatNow()) ausgeführt werden kann – der Heizbedarf
+  // veraltet dadurch nie länger als bis zum nächsten Fix bzw. Brennerende.
+  const heatResult=computeAndRenderHeat(h, v, a, pred, ahead, tol, burnK);
 
-      // effT: Zeitspanne innerhalb des Prognosehorizonts, in der eine JETZT
-      // ausgelöste Zusatzbeschleunigung tatsächlich wirkt (nach Abzug der
-      // thermischen Verzögerung). Mindestens 1s, um Division durch 0 zu
-      // vermeiden, wenn ahead <= thermalLag konfiguriert ist.
-      const effT=Math.max(1, ahead-thermalLag);
-
-      // Benötigte Zusatzbeschleunigung, um das Höhendefizit "def" am
-      // Prognosehorizont durch effT Sekunden Beschleunigung auszugleichen.
-      const daNeed=2*def/(effT*effT);
-      const tRaw=Math.round(daNeed/burnK);
-
-      // Steigraten-Obergrenze: v_neu = v + K*burnSec*effT <= maxVario
-      // → burnSec <= (maxVario-v) / (K*effT)
-      const tVarioCap=burnK>0 ? Math.max(0,(maxVario-v)/(burnK*effT)) : maxBurn;
-
-      burnSec=Math.max(1,Math.min(maxBurn,Math.min(tRaw,Math.ceil(tVarioCap))));
-
-      // Vorhersage der resultierenden Steigrate nach dem Brennvorgang
-      const deltaA=burnK*burnSec;             // Zusatzbeschleunigung [m/s²]
-      const predictedVario=Math.min(maxVario, v+deltaA*effT);
-    }
-    if(def>tol){
-      state='heat';htxt='JETZT HEIZEN!';needsHeat=true;
-      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
-    } else if(def>tol*0.25){
-      state='warn';htxt='HEIZEN EMPFOHLEN';needsHeat=true;
-      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · '+def.toFixed(1)+' m unter Sollhöhe';
-    } else if(h>targetAlt+tol){
-      state='high';htxt='ZU HOCH – BRENNER AUS';
-      detail='Aktuelle Höhe: '+h.toFixed(1)+' m · '+(h-targetAlt).toFixed(1)+' m über Sollhöhe';
-      burnSec=null;
-    } else {
-      state='ok';htxt='HÖHE STABIL';
-      detail='Prognose +'+ahead+'s: '+pred.toFixed(1)+' m · Δ '+(pred-targetAlt>=0?'+':'')+(pred-targetAlt).toFixed(1)+' m';
-      burnSec=null;
-    }
-  }
-
-  lastBurnSec=burnSec;
-  fireAlert(state,detail,burnSec);
-
-  if(needsHeat&&!prevHeat) heatCycles++;
-  if(needsHeat) heatDur++;
-  prevHeat=needsHeat;
+  // Flugstatistik (Heizzyklen/Brenndauer) wird NUR hier bei echten GPS-Fixes
+  // fortgeschrieben – nicht bei den zusätzlichen Zwischen-Neuberechnungen,
+  // sonst würden Zyklen/Sekunden doppelt gezählt.
+  if(heatResult.needsHeat&&!prevHeat) heatCycles++;
+  if(heatResult.needsHeat) heatDur++;
+  prevHeat=heatResult.needsHeat;
   elapsed++;
   const br=elapsed>0?(heatDur/elapsed*100):0;
   document.getElementById('st-cycles').textContent=heatCycles;
   document.getElementById('st-dur').textContent=heatDur+'s';
   document.getElementById('st-rate').textContent=elapsed>5?br.toFixed(1)+'%':'—';
 
-  const S={
-    ok: {bg:'#0d2615',dot:'#3fb950',txt:'#3fb950',bdr:'#238636',icon:'🟢',bar:'#3fb950'},
-    warn:{bg:'#2b1d0e',dot:'#d29922',txt:'#d29922',bdr:'#9e6a03',icon:'🟡',bar:'#d29922'},
-    heat:{bg:'#2d0f0f',dot:'#f85149',txt:'#f85149',bdr:'#da3633',icon:'🔴',bar:'#f85149'},
-    high:{bg:'#0c1d2e',dot:'#58a6ff',txt:'#58a6ff',bdr:'#1f6feb',icon:'🔵',bar:'#58a6ff'}
-  };
-  const s=S[state]||S.ok;
-  const panel=document.getElementById('heat-panel');
-  panel.style.background=s.bg; panel.style.borderColor=s.bdr;
-  document.getElementById('heat-icon').textContent=s.icon;
-  const tEl=document.getElementById('heat-txt'); tEl.style.color=s.txt; tEl.textContent=htxt;
-  document.getElementById('heat-detail').textContent=detail;
-  document.getElementById('heat-bar').style.width=barPct+'%';
-  document.getElementById('heat-bar').style.background=s.bar;
-  document.getElementById('heat-bar-wrap').style.display='block';
-  // Burn duration display
-  const bdWrap=document.getElementById('burn-dur-wrap');
-  if(burnSec!==null&&(state==='heat'||state==='warn')){
-    bdWrap.style.display='block';
-    document.getElementById('burn-dur-val').textContent=burnSec;
-    document.getElementById('burn-dur-val').style.color=state==='heat'?'#f85149':'#d29922';
-    const daN=burnSec*burnK;
-    document.getElementById('burn-dur-sub').textContent='→ ~'+predictedVario.toFixed(1)+' m/s Steigrate';
-  } else {
-    bdWrap.style.display='none';
-  }
-
-  const badge=document.getElementById('badge');
-  badge.textContent=state==='heat'?'● HEIZEN!':'● GPS AKTIV';
-  badge.style.background=state==='heat'?'#2d0f0f':'#0c1d2e';
-  badge.style.color=state==='heat'?'#f85149':'#58a6ff';
-  badge.style.borderColor=state==='heat'?'#da3633':'#1f6feb';
-
-  // Log
+  // Log – möglichst vollständige Datenpunkte pro GPS-Fix, damit die CSV-
+  // Datei eine lückenlose Nachauswertung des Fluges erlaubt (Position,
+  // Kalman-Zustand, Heizentscheidung und genutzter K-Wert zu jedem
+  // Zeitpunkt).
   const ts=new Date(now).toLocaleTimeString('de-DE',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
   logRaw.push(rawH); logH.push(h); logP.push(pred); logT.push(ts);
   logSpd.push(spd!==null?spd*1.94384:null);
   logTrk.push(hdg);
+  logLat.push(pos.coords.latitude);
+  logLon.push(pos.coords.longitude);
+  logAcc.push(acc!==null&&acc!==undefined?acc:null);
+  logV.push(v);
+  logA.push(a);
+  logState.push(heatResult.state);
+  logBurnSec.push(heatResult.burnSec);
+  logK.push(burnK);
   updateChartData();
 }
 
@@ -920,7 +1031,11 @@ function getP(){
   return{
     tol:parseFloat(document.getElementById('inp-tol').value)||15,
     ahead:parseFloat(document.getElementById('inp-ahead').value)||20,
-    burnK:parseFloat(document.getElementById('inp-burnk').value)||0.050 // Schröder G34/24, FB7-Einzel 35% η
+    burnK:parseFloat(document.getElementById('inp-burnk').value)||0.050, // Schröder G34/24, FB7-Einzel 35% η
+    // Kalman-Prozessrauschen σₐ: höher = Filter reagiert schneller auf
+    // echte Änderungen (näher am barometrischen Vario), aber etwas
+    // unruhiger. Niedriger = glatter, aber trägeres Vario.
+    filterSa:parseFloat(document.getElementById('inp-filter-sa').value)||0.15
   };
 }
 
@@ -931,9 +1046,10 @@ window.startGPS=function(){
   if(!navigator.geolocation){
     showErr('Geolocation nicht verfügbar in diesem Browser.');return;
   }
-  kf=makeKalman(0.05);
+  kf=makeKalman(getP().filterSa);
   lastTime=null;fixes=0;elapsed=0;heatCycles=0;heatDur=0;prevHeat=false;lastAlertState='inactive';
   logRaw=[];logH=[];logP=[];logT=[];logSpd=[];logTrk=[];
+  logLat=[];logLon=[];logAcc=[];logV=[];logA=[];logState=[];logBurnSec=[];logK=[];
   kfAHistory=[];kfVHistory=[];kHistory=[];aAfterBurnPending=null;burnActive=false;burnStart=null;
   logBurner=[];flightStartTime=null;calibPhaseActive=false;
   currentAlt=null;
@@ -953,6 +1069,7 @@ window.stopGPS=function(){
   if(wakeLock){wakeLock.release();wakeLock=null;}
   stopWakeLockTimer();
   stopDisplayTimer();
+  stopBurnCountdown(); // verhindert, dass der Countdown-Timer im Hintergrund weiterläuft
   kf=null;lastTime=null;lastAlertState='inactive';
   document.getElementById('btn-gps').style.display='block';
   document.getElementById('btn-stop').style.display='none';
@@ -966,6 +1083,7 @@ window.stopGPS=function(){
   document.getElementById('heat-txt').style.color='#8b949e';
   document.getElementById('heat-detail').textContent='GPS starten um Kalman-Steuerung zu aktivieren';
   document.getElementById('heat-bar-wrap').style.display='none';
+  document.getElementById('burn-dur-wrap').style.display='none';
 };
 
 window.adjTarget=function(d){
@@ -985,17 +1103,30 @@ window.adoptAlt=function(){
 
 window.exportCSV=function(){
   if(!logH.length){alert('Keine Daten vorhanden.');return;}
-  const lines=['Zeit,GPS_Roh_m,Kalman_m,Prognose_m,Soll_m,Geschw_kt,Track_deg,Brenner'];
+  // Möglichst vollständiger Datensatz pro Zeile: Zeitstempel, GPS-Rohdaten
+  // (inkl. Koordinaten und Genauigkeit), Kalman-Zustand (Höhe/Vario/Beschl.),
+  // Prognose, Sollhöhe, Geschwindigkeit, Track, Brennerstatus, Heizsignal-
+  // Zustand, empfohlene Brenndauer und der zu diesem Zeitpunkt verwendete
+  // Brennerkoeffizient K.
+  const lines=['Zeit,Lat,Lon,GPS_Roh_m,GPS_Genauigkeit_m,Kalman_m,Vario_m_s,Beschl_m_s2,Prognose_m,Soll_m,Geschw_kt,Track_deg,Brenner,Heizsignal,Empf_Brenndauer_s,K_m_s2_pro_s'];
   for(let i=0;i<logH.length;i++){
     lines.push([
       logT[i],
+      logLat[i]!==undefined&&logLat[i]!==null?logLat[i].toFixed(6):'',
+      logLon[i]!==undefined&&logLon[i]!==null?logLon[i].toFixed(6):'',
       logRaw[i]!==undefined?logRaw[i].toFixed(2):'',
+      logAcc[i]!==undefined&&logAcc[i]!==null?logAcc[i].toFixed(1):'',
       logH[i].toFixed(2),
+      logV[i]!==undefined?logV[i].toFixed(3):'',
+      logA[i]!==undefined?logA[i].toFixed(4):'',
       logP[i]!==null?logP[i].toFixed(2):'',
       targetAlt,
       logSpd[i]!==null?logSpd[i].toFixed(1):'',
       logTrk[i]!==null?logTrk[i].toFixed(0):'',
-      logBurner[i]!==undefined?logBurner[i]:''
+      logBurner[i]!==undefined?logBurner[i]:'',
+      logState[i]!==undefined?logState[i]:'',
+      logBurnSec[i]!==undefined&&logBurnSec[i]!==null?logBurnSec[i]:'',
+      logK[i]!==undefined?logK[i].toFixed(4):''
     ].join(','));
   }
   const blob=new Blob([lines.join('\n')],{type:'text/csv'});
@@ -1129,6 +1260,10 @@ function processMicLevel(rms,now){
       document.getElementById('burn-timer').textContent='';
       // Resume speech recognition
       if(speechActive){ setTimeout(()=>{ if(speechActive) try{speechRec.start();}catch(e){} }, 800); }
+      // Heizbedarf SOFORT neu berechnen, statt bis zum nächsten GPS-Fix zu
+      // warten – der Pilot sieht direkt nach dem Loslassen des Brenner-
+      // hebels, ob/wie lange noch weiter geheizt werden sollte.
+      recomputeHeatNow();
     }
     if(!burnActive) potentialBurnStart=null;
   }
