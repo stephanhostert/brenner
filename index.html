@@ -268,7 +268,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="burn-timer" style="font-size:18px;font-weight:bold;color:#f85149;font-family:'Courier New',monospace;min-width:52px;text-align:right"></span>
   </div>
   <div class="calib-row">
-    <span class="c-lbl">K MESSUNGEN</span>
+    <span class="c-lbl">K (RLS)</span>
     <span id="k-hist-txt" style="font-size:11px;color:#8b949e;flex:1">—</span>
     <span id="k-auto-val" style="font-size:13px;font-weight:bold;font-family:'Courier New',monospace;color:#3fb950;min-width:58px;text-align:right">—</span>
   </div>
@@ -279,7 +279,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.3</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.4</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -541,7 +541,38 @@ let kfAHistory=[];   // recent Kalman accelerations for K calibration
 let kfVHistory=[];   // recent Kalman velocities for vario-based K calibration
 let flightStartTime=null; // for 10-min calibration phase
 let calibPhaseActive=false;
-let kHistory=[];     // measured K values
+// ── Rekursive K-Schätzung (Recursive Least Squares, RLS) ──────────────────────
+// Ersetzt die frühere Median-Bildung über die letzten 12 Einzelmessungen.
+// Modell: y = K · x  (Geradengleichung durch den Ursprung), mit
+//   Beschleunigungs-Messung: x = Brenndauer [s],                  y = Δa [m/s²]
+//   Steigraten-Messung:      x = Brenndauer · therm. Verzögerung, y = Δv [m/s]
+// Vorteile gegenüber dem Median-Ansatz:
+//   • K wird nach JEDEM einzelnen Brennerstoß sofort fortgeschrieben statt
+//     erst über mehrere Messungen gemittelt zu werden.
+//   • Der Vergessensfaktor λ<1 gewichtet neuere Messungen stärker, sodass
+//     sich K an Lastwechsel im Flugverlauf anpasst (Flaschenwechsel,
+//     Sonneneinstrahlung, Beladungsänderung) statt auf alten Werten zu
+//     "kleben" (siehe auch Lorenz' Hinweis auf K-Drift im Originalartikel).
+//   • Die Kovarianz P sinkt mit jeder Messung und dient als Konvergenz-
+//     Indikator: groß = Schätzung noch unsicher, klein = eingeschwungen.
+let rlsK=0.050;          // aktuelle K-Schätzung [m/s²/s]
+let rlsP=1.0;             // Kovarianz/Unsicherheit der Schätzung
+let rlsN=0;               // Anzahl bisher verarbeiteter Messungen
+const RLS_LAMBDA=0.95;    // Vergessensfaktor (0.9–0.99 üblich; kleiner = passt sich schneller an)
+
+// Verarbeitet eine einzelne Messung (x, y) und aktualisiert K rekursiv.
+function updateRLS(x, y){
+  if(!(x>0) || !isFinite(x) || !isFinite(y)) return;
+  const denom=RLS_LAMBDA + x*x*rlsP;
+  const gain=(rlsP*x)/denom;
+  const innovation=y - x*rlsK;     // Abweichung Messung vs. bisherige Schätzung
+  rlsK=rlsK + gain*innovation;
+  rlsP=(rlsP - gain*x*rlsP) / RLS_LAMBDA;
+  // Physikalisch plausibler Bereich (siehe Recherche: Schröder FB7 Einzel
+  // ≈0.042, Doppel ≈0.084 m/s²/s) – verhindert Ausreißer durch Turbulenzen.
+  rlsK=Math.max(0.004, Math.min(0.5, rlsK));
+  rlsN++;
+}
 let aAfterBurnPending=null; // pending K measurement after burn
 
 const VIEW=900; // Live-Fenster im Diagramm: 15 Minuten (15*60s), läuft im Live-Modus automatisch mit
@@ -1050,7 +1081,11 @@ window.startGPS=function(){
   lastTime=null;fixes=0;elapsed=0;heatCycles=0;heatDur=0;prevHeat=false;lastAlertState='inactive';
   logRaw=[];logH=[];logP=[];logT=[];logSpd=[];logTrk=[];
   logLat=[];logLon=[];logAcc=[];logV=[];logA=[];logState=[];logBurnSec=[];logK=[];
-  kfAHistory=[];kfVHistory=[];kHistory=[];aAfterBurnPending=null;burnActive=false;burnStart=null;
+  kfAHistory=[];kfVHistory=[];aAfterBurnPending=null;burnActive=false;burnStart=null;
+  // RLS-Schätzung mit dem aktuell im Feld stehenden K-Wert initialisieren
+  // (respektiert eine manuelle Voreinstellung), Unsicherheit zurücksetzen.
+  rlsK=parseFloat(document.getElementById('inp-burnk').value)||0.050;
+  rlsP=1.0; rlsN=0;
   logBurner=[];flightStartTime=null;calibPhaseActive=false;
   currentAlt=null;
   initChart();requestWakeLock();startWakeLockTimer();startDisplayTimer();setLive(true);
@@ -1290,37 +1325,46 @@ function checkKCalibration(a,v_cur){
   }
   const da=a-aBefore;
   const lag=parseInt(document.getElementById('inp-lag').value)||10;
-  let kSamples=[];
+  let updated=false;
   let kInfo='';
 
-  // K from acceleration response
+  // Messung 1: aus Beschleunigungsänderung (x=Brenndauer, y=Δa).
+  // kA dient nur der Plausibilitätsprüfung/Anzeige; die eigentliche
+  // K-Fortschreibung übernimmt updateRLS() mit den Rohwerten (dur, da).
   if(da>0.003&&dur>0.5){
     const kA=da/dur;
-    if(kA>0.004&&kA<0.5){ kSamples.push(kA); kInfo+='Ka='+kA.toFixed(3); }
+    if(kA>0.004&&kA<0.5){
+      updateRLS(dur, da);
+      updated=true;
+      kInfo+='Ka='+kA.toFixed(3);
+    }
   }
 
-  // K from vario response (only during first 10 min = calibration phase)
+  // Messung 2: aus Steigratenänderung – nur während der ersten 10 Minuten
+  // (Kalibrierphase), da danach echte Thermik die Steigrate überlagern kann
+  // und die Messung verfälschen würde.
   if(calibPhaseActive&&pending.vBefore!==null&&pending.vBefore!==undefined){
-    const dv=a_current_vel-pending.vBefore; // use current velocity
+    const dv=a_current_vel-pending.vBefore;
     if(dv>0.1&&dur>0.5){
       const kV=dv/(dur*lag);
       if(kV>0.004&&kV<0.5){
-        kSamples.push(kV);
-        kInfo+=(kInfo?' · ':'')+'Kv='+kV.toFixed(3)+(calibPhaseActive?' 🎯':'');
+        updateRLS(dur*lag, dv);
+        updated=true;
+        kInfo+=(kInfo?' · ':'')+'Kv='+kV.toFixed(3)+' 🎯';
       }
     }
   }
 
-  if(kSamples.length>0){
-    const kNew=kSamples.reduce((a,b)=>a+b)/kSamples.length;
-    kHistory.push(parseFloat(kNew.toFixed(4)));
-    if(kHistory.length>12) kHistory.shift();
-    const med=kHistory.slice().sort((a,b)=>a-b)[Math.floor(kHistory.length/2)];
-    document.getElementById('inp-burnk').value=med.toFixed(3);
-    document.getElementById('k-auto-val').textContent=med.toFixed(3);
-    document.getElementById('k-hist-txt').textContent=kHistory.map(v=>v.toFixed(3)).join(' · ');
+  if(updated){
+    document.getElementById('inp-burnk').value=rlsK.toFixed(3);
+    document.getElementById('k-auto-val').textContent=rlsK.toFixed(3);
+    // σ = √P als Konvergenz-Indikator: sinkt mit jeder Messung, sobald die
+    // Schätzung "eingeschwungen" ist (typisch nach 5-10 Brennerstößen).
+    const sigma=Math.sqrt(Math.max(0,rlsP));
+    document.getElementById('k-hist-txt').textContent=
+      'RLS: K='+rlsK.toFixed(4)+' ±'+sigma.toFixed(4)+' (n='+rlsN+')';
     const phase=calibPhaseActive?(' · Kalib.phase '+(Math.floor((Date.now()-flightStartTime)/60000)+1)+'/10min'):'';
-    document.getElementById('k-calib-status').textContent='✓ '+kInfo+' · n='+kHistory.length+phase;
+    document.getElementById('k-calib-status').textContent='✓ '+kInfo+phase;
   } else {
     document.getElementById('k-calib-status').textContent='Kein Signal (Δa='+da.toFixed(4)+', Turb.?)';
   }
