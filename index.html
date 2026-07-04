@@ -292,7 +292,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.6</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.7</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -707,15 +707,24 @@ function renderInstruments(h, v, a, pred, ahead){
 
   // Aktuelle Höhe: Hauptanzeige in Metern, zusätzlich die reale (aktuelle,
   // NICHT die Prognose-) Höhe in Fuß in der Subzeile (1 m = 3.28084 ft).
-  const altFt=Math.round(h*M_TO_FT);
-  document.getElementById('val-alt').textContent=h.toFixed(1);
+  // Wenn Baro-Bridge frisch: direkte Flytec-Höhe (1-m-Auflösung, identisch
+  // zum Instrument). Sonst: Kalman-Höhe. Der Kalman läuft intern weiter für
+  // Prognose/Steuerung – die Anzeige bleibt so eindeutig identisch mit dem
+  // Serial-Monitor bzw. dem Flytec-Display.
+  const displayH = (isBaroFresh() && lastBaroAlt!==null) ? lastBaroAlt : h;
+  const altFt=Math.round(displayH*M_TO_FT);
+  document.getElementById('val-alt').textContent=displayH.toFixed(1);
   document.getElementById('val-alt-delta').textContent=
-    (h-targetAlt>=0?'+':'')+((h-targetAlt).toFixed(1))+' m vs Soll · '+altFt+' ft';
+    (displayH-targetAlt>=0?'+':'')+((displayH-targetAlt).toFixed(1))+' m vs Soll · '+altFt+' ft';
 
   const vEl=document.getElementById('val-vario');
-  vEl.textContent=(v>=0?'+':'')+v.toFixed(2);
-  vEl.style.color=v>0.3?'#3fb950':v<-0.3?'#f85149':'#c9d1d9';
-  document.getElementById('val-vario-trend').textContent=v>0.2?'▲ Steigend':v<-0.2?'▼ Sinkend':'→ Stabil';
+  // Wenn Baro-Bridge frische Daten liefert: das ECHTE Flytec-Vario anzeigen
+  // (direkter, unverzögerter Wert vom Instrument – wichtig beim Heizen).
+  // Der Kalman-Wert v wird intern weiter für Prognose/Steuerung genutzt.
+  const displayV = (isBaroFresh() && lastBaroVario!==null) ? lastBaroVario : v;
+  vEl.textContent=(displayV>=0?'+':'')+displayV.toFixed(2);
+  vEl.style.color=displayV>0.3?'#3fb950':displayV<-0.3?'#f85149':'#c9d1d9';
+  document.getElementById('val-vario-trend').textContent=displayV>0.2?'▲ Steigend':displayV<-0.2?'▼ Sinkend':'→ Stabil';
 
   document.getElementById('val-acc').textContent=(a>=0?'+':'')+a.toFixed(3);
 
