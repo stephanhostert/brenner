@@ -112,7 +112,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
 <div id="err-banner" style="display:none;padding:10px 12px;background:#2d0f0f;border:1px solid #da3633;border-radius:8px;margin-bottom:8px;font-size:12px;color:#f85149;font-family:'Courier New',monospace"></div>
 <div class="instruments" style="grid-template-columns:repeat(3,minmax(0,1fr))">
   <div class="instr">
-    <div class="instr-lbl">HÖHE</div>
+    <div class="instr-lbl">HÖHE <span id="alt-src" style="font-size:9px;padding:1px 4px;border-radius:3px;background:#30363d;color:#8b949e;margin-left:4px;letter-spacing:.04em">—</span></div>
     <div><span class="instr-val" id="val-alt">—</span><span class="instr-unit">m</span></div>
     <div class="instr-sub" id="val-alt-delta"></div>
   </div>
@@ -292,7 +292,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.5</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.6</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -982,13 +982,19 @@ function onGPS(pos){
     }
   }
 
-  // Wichtige Regel: wenn die ESP32-Bridge aktiv ist, wird der Kalman-Filter
-  // AUSSCHLIESSLICH mit der Baro-Höhe des Flytec gefüttert (kommt über
-  // onBleData als separater synthetischer Fix). Ein echter GPS-Fix mit
-  // Höhe wird in diesem Modus ignoriert, um die ~5-10 m GPS-Ungenauigkeit
-  // nicht mit den ~1 m Baro-Genauigkeit zu vermischen.
-  if(bleActive && !isBaroFix){
+  // Wichtige Regel: wenn die ESP32-Bridge FRISCHE Daten liefert (< 3s alt),
+  // wird der Kalman-Filter AUSSCHLIESSLICH mit der Baro-Höhe des Flytec
+  // gefüttert (kommt über onBleData als separater synthetischer Fix). Ein
+  // echter GPS-Fix mit Höhe wird in diesem Modus ignoriert, um die ~5-10 m
+  // GPS-Ungenauigkeit nicht mit den ~1 m Baro-Genauigkeit zu vermischen.
+  // Bricht der Baro-Datenstrom ab (Flytec-BT-Verbindung tot), fällt die App
+  // automatisch auf GPS zurück – ohne dass die BLE-Verbindung getrennt wird.
+  if(isBaroFresh() && !isBaroFix){
     return; // Speed/Track wurden oben bereits aus dem GPS-Fix übernommen
+  }
+  // Wenn wir hier landen und es KEIN Baro-Fix ist, kommt die Höhe aus GPS.
+  if(!isBaroFix){
+    updateAltSource(bleActive ? 'baro_stale' : 'gps');
   }
 
   // Messrauschen R für den Kalman-Filter:
@@ -1143,7 +1149,38 @@ let bleActive=false;           // true, wenn eine aktive BLE-Verbindung besteht
 let lastBaroAlt=null;          // letzte barometrische Höhe [m] von der Bridge
 let lastBaroVario=null;        // letztes Vario [m/s] vom Flytec (nur Anzeige)
 let lastBaroPressure=null;     // letzter Druck [hPa]
+let lastBaroTime=null;         // Zeitstempel des letzten Baro-Frames [ms]
 let bleFrameCount=0;           // Zähler der empfangenen BLE-Datenpakete
+const BARO_STALE_MS = 3000;    // Nach 3s ohne Baro-Frame gilt die Bridge als "stumm"
+
+// Prüft ob wir aktuell frische Baro-Daten haben (Bridge verbunden UND letzter
+// Frame nicht älter als BARO_STALE_MS). Nur dann wird die GPS-Höhe ignoriert.
+function isBaroFresh(){
+  return bleActive && lastBaroTime!==null && (Date.now()-lastBaroTime < BARO_STALE_MS);
+}
+
+// Aktualisiert das Kennzeichen neben dem HÖHE-Label. source: 'baro'|'gps'|'baro_stale'|'none'
+function updateAltSource(source){
+  const el = document.getElementById('alt-src');
+  if(!el) return;
+  if(source==='baro'){
+    el.textContent = 'BARO';
+    el.style.background = '#0c2d0c';
+    el.style.color = '#3fb950';
+  } else if(source==='baro_stale'){
+    el.textContent = 'BARO ⚠';
+    el.style.background = '#3d2f0a';
+    el.style.color = '#d29922';
+  } else if(source==='gps'){
+    el.textContent = 'GPS';
+    el.style.background = '#0c1d2e';
+    el.style.color = '#58a6ff';
+  } else {
+    el.textContent = '—';
+    el.style.background = '#30363d';
+    el.style.color = '#8b949e';
+  }
+}
 
 // Aktualisiert das kleine Statuszeilen-Widget oberhalb der Buttons.
 function updateBleStatus(msg, color){
@@ -1210,12 +1247,31 @@ window.disconnectBLE = function(){
   try{ if(bleChar) bleChar.stopNotifications().catch(()=>{}); }catch(e){}
   try{ if(bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); }catch(e){}
   bleChar=null; bleServer=null; bleDevice=null;
-  lastBaroAlt=null; lastBaroVario=null; lastBaroPressure=null;
+  lastBaroAlt=null; lastBaroVario=null; lastBaroPressure=null; lastBaroTime=null;
   updateBleStatus('Bridge inaktiv', '#30363d');
   updateBleInfo();
+  updateAltSource(watchId!==null ? 'gps' : 'none');
   document.getElementById('btn-ble').style.display='block';
   document.getElementById('btn-ble-disc').style.display='none';
 };
+
+// Watchdog: alle 1s prüfen, ob die Bridge zwar verbunden ist, aber keine Daten
+// mehr liefert (typisch: Flytec ausgegangen, BT-Verbindung ESP32↔Flytec tot).
+// In diesem Fall wird das Status-Widget auf "Bridge stumm" umgeschaltet und
+// das HÖHE-Kennzeichen färbt sich gelb (BARO ⚠).
+setInterval(function(){
+  if(!bleActive) return;
+  if(lastBaroTime===null) return;         // noch nie Daten empfangen
+  const age = Date.now()-lastBaroTime;
+  if(age > BARO_STALE_MS){
+    // Bridge verbunden, aber keine Daten – warnen.
+    updateBleStatus('Bridge stumm (Flytec?)', '#d29922');
+    if(watchId!==null) updateAltSource('baro_stale');
+  } else {
+    // Alles ok – Status wieder grün (falls er zwischenzeitlich gelb war)
+    updateBleStatus('Bridge verbunden', '#3fb950');
+  }
+}, 1000);
 
 // Wird aufgerufen, wenn die BLE-Verbindung ungewollt abreißt (Reichweite,
 // Akku, etc.). Reagiert wie ein manuelles Trennen und zeigt es dem Piloten.
@@ -1223,7 +1279,9 @@ function onBleDisconnected(){
   if(!bleActive) return;      // war ohnehin schon getrennt
   bleActive = false;
   bleChar=null; bleServer=null;
+  lastBaroTime=null;
   updateBleStatus('Bridge getrennt', '#f85149');
+  updateAltSource(watchId!==null ? 'gps' : 'none');
   document.getElementById('btn-ble').style.display='block';
   document.getElementById('btn-ble-disc').style.display='none';
   // GPS läuft weiter – die App fällt automatisch auf GPS-Höhe zurück,
@@ -1249,8 +1307,10 @@ function onBleData(event){
   lastBaroAlt = alt;
   lastBaroVario = vario;
   lastBaroPressure = pressure;
+  lastBaroTime = Date.now();
   bleFrameCount++;
   updateBleInfo();
+  updateAltSource('baro');
 
   // Nur wenn GPS läuft, füttern wir die Baro-Höhe in den Kalman-Filter –
   // sonst hätte die App keinen "Fahrt aktiv"-Zustand.
