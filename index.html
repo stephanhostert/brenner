@@ -212,10 +212,23 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="gps-acc" style="font-size:11px;color:#8b949e">±— m</span>
     <span id="gps-fixes" style="font-size:11px;color:#8b949e">0 Fixes</span>
   </div>
+  <!-- BLE-Statuszeile für die ESP32 → Flytec-Bridge (barometrische Höhe/Vario) -->
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;padding:6px 0;border-top:1px solid #21262d;border-bottom:1px solid #21262d">
+    <div style="display:flex;align-items:center;gap:6px">
+      <div id="ble-dot" style="width:8px;height:8px;border-radius:50%;background:#30363d;flex-shrink:0"></div>
+      <span id="ble-status" style="font-size:11px;color:#8b949e">Bridge inaktiv</span>
+    </div>
+    <span id="ble-info" style="font-size:11px;color:#8b949e">Baro: — · Temp: —</span>
+  </div>
   <div style="display:flex;gap:8px;margin-bottom:8px">
     <button class="btn" id="btn-gps" onclick="startGPS()" style="background:#0c2d0c;border-color:#238636;color:#3fb950">▶ GPS STARTEN</button>
     <button class="btn" id="btn-stop" onclick="stopGPS()" style="display:none;background:#2d0f0f;border-color:#da3633;color:#f85149">■ STOPPEN</button>
     <button class="btn" id="btn-export" onclick="exportCSV()" style="background:#161b22;border-color:#30363d;color:#8b949e;font-size:12px;max-width:80px">↓ CSV</button>
+  </div>
+  <!-- Bridge-Verbindungsbuttons: sichtbar wenn Web Bluetooth verfügbar ist -->
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button class="btn" id="btn-ble" onclick="connectBLE()" style="background:#0c1d2e;border-color:#1f6feb;color:#58a6ff;font-size:12px">📡 Mit ESP32-Bridge verbinden</button>
+    <button class="btn" id="btn-ble-disc" onclick="disconnectBLE()" style="display:none;background:#2d0f0f;border-color:#da3633;color:#f85149;font-size:12px">🔌 Trennen</button>
   </div>
   <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
     <div class="stat"><div class="stat-lbl">HEIZZYKLEN</div><div class="stat-val" id="st-cycles">0</div></div>
@@ -279,7 +292,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.4</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.5</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -912,11 +925,26 @@ function onGPS(pos){
   const acc=pos.coords.altitudeAccuracy;
   const spd=pos.coords.speed;       // m/s or null
   const hdg=pos.coords.heading;     // degrees or null
+  // Ein "Fix" ist synthetisch (von der ESP32-Bridge), wenn keine Position
+  // mitgeliefert wird. Solche Fixes liefern NUR die barometrische Höhe;
+  // Speed/Track/Position werden dann nicht angetastet, damit das echte
+  // iPhone-GPS diese Anzeige weiterhin bedient.
+  const isBaroFix = (pos.coords.latitude===null);
 
   // Count all GPS callbacks (even without altitude)
   fixes++;
   document.getElementById('gps-fixes').textContent=fixes+' Fixes';
   if(rawH===null||rawH===undefined){
+    // Wenn die ESP32-Bridge aktiv ist, kann die App auch mit einem reinen
+    // 2D-GPS-Fix weiterarbeiten – die Höhe liefert dann das Flytec-Barometer.
+    // Diese Callback-Runde wird nur dann verworfen, wenn WEDER GPS-Höhe
+    // NOCH BLE-Baro verfügbar sind.
+    if(bleActive){
+      document.getElementById('gps-status').textContent='GPS 2D · Baro aktiv';
+      document.getElementById('gps-dot').style.background='#3fb950';
+      document.getElementById('gps-acc').textContent='Baro';
+      return; // Kein Kalman-Update ohne rawH; die Baro-Notifications füttern den Filter separat.
+    }
     document.getElementById('gps-status').textContent='Warte auf 3D-Fix ('+fixes+' 2D)…';
     document.getElementById('gps-dot').style.background='#d29922';
     document.getElementById('gps-acc').textContent='kein Alt.';
@@ -929,26 +957,47 @@ function onGPS(pos){
   document.getElementById('gps-dot').style.background=dotCol;
   document.getElementById('gps-status').textContent=acc<10?'GPS gut':acc<25?'GPS mittel':'GPS schwach';
 
-  // Speed
-  if(spd!==null&&spd!==undefined){
-    const kt=(spd*1.94384);
-    document.getElementById('val-spd').textContent=kt.toFixed(1);
-    document.getElementById('val-spd-sub').textContent=(spd*3.6).toFixed(1)+' km/h';
-  } else {
-    document.getElementById('val-spd').textContent='—';
-    document.getElementById('val-spd-sub').textContent='kein Signal';
+  // Speed und Track werden ausschließlich aus echten iPhone-GPS-Fixes gespeist.
+  // Bei einem synthetischen Baro-Fix (Position=null) NICHT überschreiben,
+  // sonst würde jede Baro-Notification (~1 Hz) die letzten GPS-Werte auf
+  // '—' zurücksetzen.
+  if(!isBaroFix){
+    // Speed
+    if(spd!==null&&spd!==undefined){
+      const kt=(spd*1.94384);
+      document.getElementById('val-spd').textContent=kt.toFixed(1);
+      document.getElementById('val-spd-sub').textContent=(spd*3.6).toFixed(1)+' km/h';
+    } else {
+      document.getElementById('val-spd').textContent='—';
+      document.getElementById('val-spd-sub').textContent='kein Signal';
+    }
+
+    // Track/Heading
+    if(hdg!==null&&hdg!==undefined&&(spd===null||spd>0.5)){
+      document.getElementById('val-trk').textContent=Math.round(hdg);
+      document.getElementById('val-trk-dir').textContent='';
+    } else {
+      document.getElementById('val-trk').textContent='—';
+      document.getElementById('val-trk-dir').textContent='';
+    }
   }
 
-  // Track/Heading
-  if(hdg!==null&&hdg!==undefined&&(spd===null||spd>0.5)){
-    document.getElementById('val-trk').textContent=Math.round(hdg);
-    document.getElementById('val-trk-dir').textContent='';
-  } else {
-    document.getElementById('val-trk').textContent='—';
-    document.getElementById('val-trk-dir').textContent='';
+  // Wichtige Regel: wenn die ESP32-Bridge aktiv ist, wird der Kalman-Filter
+  // AUSSCHLIESSLICH mit der Baro-Höhe des Flytec gefüttert (kommt über
+  // onBleData als separater synthetischer Fix). Ein echter GPS-Fix mit
+  // Höhe wird in diesem Modus ignoriert, um die ~5-10 m GPS-Ungenauigkeit
+  // nicht mit den ~1 m Baro-Genauigkeit zu vermischen.
+  if(bleActive && !isBaroFix){
+    return; // Speed/Track wurden oben bereits aus dem GPS-Fix übernommen
   }
 
-  const R=acc?Math.min(Math.max(acc*acc,9),2500):400;
+  // Messrauschen R für den Kalman-Filter:
+  //  - Echter GPS-Fix: R aus altitudeAccuracy² abgeleitet (9..2500 m²)
+  //  - Baro-Fix von der Bridge: sehr klein, weil die barometrische Höhe des
+  //    Flytec eine Auflösung von 1 m und ein ähnlich niedriges Rauschen hat.
+  //    R=4 (= σ=2 m) sorgt dafür, dass der Filter dem Baro deutlich stärker
+  //    "vertraut" als er es beim GPS je könnte.
+  const R = isBaroFix ? 4 : (acc?Math.min(Math.max(acc*acc,9),2500):400);
   let dt=2;
   if(lastTime!==null) dt=Math.min((now-lastTime)/1000,10);
   lastTime=now;
@@ -1069,6 +1118,164 @@ function getP(){
     filterSa:parseFloat(document.getElementById('inp-filter-sa').value)||0.15
   };
 }
+
+// ── ESP32-Bridge (Web Bluetooth) ──────────────────────────────────────────────
+// Verbindet die PWA per BLE mit dem ESP32-Modul im Korb, das seinerseits per
+// Bluetooth Classic (SPP) am Flytec 6030 hängt und dessen $FLYSEN-Sätze
+// dekodiert. Vorteil gegenüber dem iPhone-GPS:
+//   • Höhen-Auflösung 1 m statt ~5-10 m (barometrisch statt GPS)
+//   • Vario direkt vom Flytec-Barometer mit 1 cm/s Auflösung
+//   • Update-Rate stabil ~1 Hz, ohne die Aussetzer des iPhone-GPS
+// GPS läuft trotzdem weiter – Position, Geschwindigkeit und Track kommen
+// weiter vom iPhone; nur die Höhe wird durch die Baro-Höhe des Flytec ersetzt.
+//
+// Datenformat pro BLE-Notification (CSV-String, siehe ESP32-Sketch):
+//   "<baroAlt m>,<vario m/s>,<pressure hPa>"
+//   z.B.  "234.0,+0.03,985.50"
+//
+// Die UUIDs müssen exakt mit denen im ESP32-Sketch (Flytec BLE Bridge)
+// übereinstimmen.
+const BLE_SERVICE_UUID = 'e5a1c1a0-1b8a-4b93-9a5f-1c3f4b0a1e01';
+const BLE_CHAR_UUID    = 'e5a1c1a0-1b8a-4b93-9a5f-1c3f4b0a1e02';
+
+let bleDevice=null, bleServer=null, bleChar=null;
+let bleActive=false;           // true, wenn eine aktive BLE-Verbindung besteht
+let lastBaroAlt=null;          // letzte barometrische Höhe [m] von der Bridge
+let lastBaroVario=null;        // letztes Vario [m/s] vom Flytec (nur Anzeige)
+let lastBaroPressure=null;     // letzter Druck [hPa]
+let bleFrameCount=0;           // Zähler der empfangenen BLE-Datenpakete
+
+// Aktualisiert das kleine Statuszeilen-Widget oberhalb der Buttons.
+function updateBleStatus(msg, color){
+  document.getElementById('ble-status').textContent = msg;
+  document.getElementById('ble-dot').style.background = color;
+}
+function updateBleInfo(){
+  const t = document.getElementById('ble-info');
+  const alt = lastBaroAlt!==null ? lastBaroAlt.toFixed(0)+' m' : '—';
+  // Temperatur-Anzeige ist vorbereitet, sobald wir das FLYSEN-Feld eindeutig
+  // identifiziert haben (Test mit TempRx-Sender). Bis dahin bleibt '—'.
+  t.textContent = 'Baro: '+alt+' · Temp: —';
+}
+
+// Startet die Verbindung zum ESP32. Muss durch einen Nutzer-Tap ausgelöst
+// werden (Sicherheitsanforderung von Web Bluetooth).
+window.connectBLE = async function(){
+  if(!navigator.bluetooth){
+    showErr('Web Bluetooth ist in diesem Browser nicht verfügbar. '
+          + 'Auf iOS: Bluefy oder eine App wie "WebBLE" öffnen. '
+          + 'Auf Android/Desktop: Chrome/Edge nutzen.');
+    return;
+  }
+  try{
+    updateBleStatus('Suche Bridge…', '#d29922');
+    // Nach Geräten filtern, die den Service anbieten – erscheint als Dialog.
+    bleDevice = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [BLE_SERVICE_UUID] }],
+      optionalServices: [BLE_SERVICE_UUID]
+    });
+    // Auto-Reconnect vorbereiten, falls die Verbindung mal abbricht.
+    bleDevice.addEventListener('gattserverdisconnected', onBleDisconnected);
+
+    updateBleStatus('Verbinde…', '#d29922');
+    bleServer = await bleDevice.gatt.connect();
+    const service = await bleServer.getPrimaryService(BLE_SERVICE_UUID);
+    bleChar = await service.getCharacteristic(BLE_CHAR_UUID);
+
+    // Notifications abonnieren – der ESP32 pusht dann jede Sekunde einen
+    // neuen CSV-Datensatz.
+    await bleChar.startNotifications();
+    bleChar.addEventListener('characteristicvaluechanged', onBleData);
+
+    bleActive = true;
+    bleFrameCount = 0;
+    updateBleStatus('Bridge verbunden', '#3fb950');
+    document.getElementById('btn-ble').style.display='none';
+    document.getElementById('btn-ble-disc').style.display='block';
+  } catch(e){
+    updateBleStatus('Verbindung fehlgeschlagen', '#f85149');
+    // NotFoundError = User hat den Dialog geschlossen – kein echter Fehler
+    if(e && e.name!=='NotFoundError'){
+      showErr('BLE-Fehler: '+(e.message||e));
+    } else {
+      // Reset auf "inaktiv" nach 2s, wenn der User einfach abgebrochen hat
+      setTimeout(()=>updateBleStatus('Bridge inaktiv', '#30363d'), 2000);
+    }
+  }
+};
+
+// Trennt die BLE-Verbindung manuell (Button "Trennen").
+window.disconnectBLE = function(){
+  bleActive = false;
+  try{ if(bleChar) bleChar.stopNotifications().catch(()=>{}); }catch(e){}
+  try{ if(bleDevice && bleDevice.gatt.connected) bleDevice.gatt.disconnect(); }catch(e){}
+  bleChar=null; bleServer=null; bleDevice=null;
+  lastBaroAlt=null; lastBaroVario=null; lastBaroPressure=null;
+  updateBleStatus('Bridge inaktiv', '#30363d');
+  updateBleInfo();
+  document.getElementById('btn-ble').style.display='block';
+  document.getElementById('btn-ble-disc').style.display='none';
+};
+
+// Wird aufgerufen, wenn die BLE-Verbindung ungewollt abreißt (Reichweite,
+// Akku, etc.). Reagiert wie ein manuelles Trennen und zeigt es dem Piloten.
+function onBleDisconnected(){
+  if(!bleActive) return;      // war ohnehin schon getrennt
+  bleActive = false;
+  bleChar=null; bleServer=null;
+  updateBleStatus('Bridge getrennt', '#f85149');
+  document.getElementById('btn-ble').style.display='block';
+  document.getElementById('btn-ble-disc').style.display='none';
+  // GPS läuft weiter – die App fällt automatisch auf GPS-Höhe zurück,
+  // weil onGPS() dann keinen bleActive-Wert mehr sieht.
+}
+
+// Verarbeitet ein empfangenes BLE-Datenpaket vom ESP32.
+// Erwartet CSV-Format "alt,vario,pressure" (siehe ESP32-Sketch).
+function onBleData(event){
+  const value = event.target.value;
+  // DataView → String dekodieren (ASCII)
+  let str = '';
+  for(let i=0;i<value.byteLength;i++) str += String.fromCharCode(value.getUint8(i));
+  str = str.trim();
+  const parts = str.split(',');
+  if(parts.length < 3) return;
+
+  const alt = parseFloat(parts[0]);
+  const vario = parseFloat(parts[1]);
+  const pressure = parseFloat(parts[2]);
+  if(!isFinite(alt) || !isFinite(vario) || !isFinite(pressure)) return;
+
+  lastBaroAlt = alt;
+  lastBaroVario = vario;
+  lastBaroPressure = pressure;
+  bleFrameCount++;
+  updateBleInfo();
+
+  // Nur wenn GPS läuft, füttern wir die Baro-Höhe in den Kalman-Filter –
+  // sonst hätte die App keinen "Fahrt aktiv"-Zustand.
+  if(watchId===null || !kf) return;
+
+  // Synthetisches GPS-Objekt bauen, das aus Sicht von onGPS() wie ein
+  // hochgenauer GPS-Fix aussieht. Position/Speed/Track lassen wir null,
+  // damit onGPS() diese Werte nicht überschreibt (das echte GPS liefert
+  // sie parallel weiter).
+  const syntheticPos = {
+    timestamp: Date.now(),
+    coords: {
+      latitude:  null,
+      longitude: null,
+      altitude:  alt,
+      accuracy:  null,
+      altitudeAccuracy: 1.0,   // Baro-Höhe ist deutlich präziser als GPS
+      speed:     null,
+      heading:   null
+    }
+  };
+  // Erst-Aufruf: Kalman braucht einen Startwert
+  onGPS(syntheticPos);
+}
+
 
 // ── Controls ──────────────────────────────────────────────────────────────────
 window.startGPS=function(){
