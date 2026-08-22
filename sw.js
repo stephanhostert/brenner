@@ -1,4 +1,4 @@
-const CACHE = 'brenner-v2-7';
+const CACHE = 'brenner-v2-8';
 const FILES = ['./index.html', './manifest.json'];
 
 // Cache App-Dateien beim ersten Laden

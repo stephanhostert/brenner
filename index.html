@@ -42,14 +42,21 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
 #val-spd{font-size:22px;font-weight:bold;color:#e6edf3}
 #val-trk{font-size:24px;font-weight:bold;color:#e6edf3}
 
-#heat-panel{border-radius:12px;border:2px solid #30363d;padding:14px;text-align:center;margin-bottom:8px;transition:background .3s,border-color .3s}
-#heat-icon{font-size:20px;line-height:1;flex-shrink:0}
-#heat-txt{font-size:15px;font-weight:bold;letter-spacing:.04em;color:#8b949e;transition:color .3s;white-space:nowrap}
-#heat-detail{font-size:10px;color:#8b949e;flex:1}
-#heat-bar-wrap{display:none;width:100%}
+#heat-panel{border-radius:12px;border:2px solid #30363d;padding:8px 12px;text-align:center;margin-bottom:8px;transition:background .3s,border-color .3s}
+#heat-icon{font-size:16px;line-height:1;flex-shrink:0;display:inline-block;vertical-align:middle;margin-right:6px}
+#heat-txt{font-size:13px;font-weight:bold;letter-spacing:.04em;color:#8b949e;transition:color .3s;white-space:nowrap;display:inline-block;vertical-align:middle}
+#heat-detail{font-size:10px;color:#8b949e;display:inline-block;margin-left:8px;vertical-align:middle}
+#heat-bar-wrap{display:none;width:100%;margin-top:6px}
 .bar-track{height:6px;background:#30363d;border-radius:3px;overflow:hidden}
 #heat-bar{height:100%;width:50%;border-radius:3px;transition:width .4s,background .3s}
 .bar-labs{display:flex;justify-content:space-between;font-size:10px;color:#6e7681;margin-top:3px}
+
+/* Quellen-Badges an den Instrumenten */
+.src-badge{font-size:9px;padding:1px 4px;border-radius:3px;background:#30363d;color:#8b949e;margin-left:4px;letter-spacing:.04em;font-weight:normal;display:inline-block;vertical-align:middle}
+.src-badge.src-kalman{background:#1f2937;color:#7c9cff}
+.src-badge.src-gps{background:#0c1d2e;color:#58a6ff}
+.src-badge.src-baro{background:#0c2d0c;color:#3fb950}
+.src-badge.src-stale{background:#3d2f0a;color:#d29922}
 
 /* Chart */
 .chart-wrap{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:10px;margin-bottom:8px}
@@ -112,45 +119,43 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
 <div id="err-banner" style="display:none;padding:10px 12px;background:#2d0f0f;border:1px solid #da3633;border-radius:8px;margin-bottom:8px;font-size:12px;color:#f85149;font-family:'Courier New',monospace"></div>
 <div class="instruments" style="grid-template-columns:repeat(3,minmax(0,1fr))">
   <div class="instr">
-    <div class="instr-lbl">HÖHE <span id="alt-src" style="font-size:9px;padding:1px 4px;border-radius:3px;background:#30363d;color:#8b949e;margin-left:4px;letter-spacing:.04em">—</span></div>
+    <div class="instr-lbl">HÖHE <span id="alt-src" class="src-badge">—</span></div>
     <div><span class="instr-val" id="val-alt">—</span><span class="instr-unit">m</span></div>
     <div class="instr-sub" id="val-alt-delta"></div>
   </div>
   <div class="instr">
-    <div class="instr-lbl">VARIO</div>
+    <div class="instr-lbl">VARIO <span id="vario-src" class="src-badge">—</span></div>
     <div><span class="instr-val" id="val-vario">—</span><span class="instr-unit">m/s</span></div>
     <div class="instr-sub" id="val-vario-trend"></div>
   </div>
   <div class="instr instr-sm">
-    <div class="instr-lbl">BESCHL.</div>
+    <div class="instr-lbl">BESCHL. <span class="src-badge src-kalman">KALMAN</span></div>
     <div><span id="val-acc">—</span><span class="instr-unit">m/s²</span></div>
-    <div class="instr-sub" style="color:#484f58">Kalman</div>
+    <div class="instr-sub"></div>
   </div>
   <div class="instr">
-    <div class="instr-lbl">+<span id="lbl-ahead">20</span>s PROGNOSE</div>
+    <div class="instr-lbl">+<span id="lbl-ahead">20</span>s PROGNOSE <span class="src-badge src-kalman">KALMAN</span></div>
     <div><span id="val-pred">—</span><span class="instr-unit">m</span></div>
     <div class="instr-sub" id="val-pred-delta"></div>
   </div>
   <div class="instr">
-    <div class="instr-lbl">GESCHWINDIGKEIT</div>
+    <div class="instr-lbl">GESCHWINDIGKEIT <span class="src-badge src-gps">GPS</span></div>
     <div><span id="val-spd">—</span><span class="instr-unit">kt</span></div>
     <div class="instr-sub" id="val-spd-sub"></div>
   </div>
   <div class="instr">
-    <div class="instr-lbl">TRACK</div>
+    <div class="instr-lbl">TRACK <span class="src-badge src-gps">GPS</span></div>
     <div><span id="val-trk">—</span><span class="instr-unit">°</span></div>
     <div class="instr-sub" id="val-trk-dir"></div>
   </div>
 </div>
 <div id="heat-panel">
-  <div id="heat-icon">⬜</div>
-  <div id="heat-txt">STEUERUNG INAKTIV</div>
-  <div id="heat-detail">GPS starten um Kalman-Steuerung zu aktivieren</div>
-  <div id="burn-dur-wrap" style="display:none;margin-top:8px;padding:8px 12px;background:rgba(0,0,0,0.25);border-radius:8px">
-    <span style="font-size:11px;color:#8b949e;letter-spacing:.08em">EMPFOHLENE BRENNDAUER</span><br>
-    <span id="burn-dur-val" style="font-size:28px;font-weight:bold;color:#f85149;font-family:'Courier New',monospace">—</span>
-    <span style="font-size:14px;color:#8b949e"> s</span>
-    <span id="burn-dur-sub" style="font-size:11px;color:#8b949e;margin-left:8px"></span>
+  <div><span id="heat-icon">⬜</span><span id="heat-txt">STEUERUNG INAKTIV</span><span id="heat-detail">GPS starten um Kalman-Steuerung zu aktivieren</span></div>
+  <div id="burn-dur-wrap" style="display:none;margin-top:4px">
+    <span style="font-size:10px;color:#8b949e;letter-spacing:.06em">BRENNDAUER:</span>
+    <span id="burn-dur-val" style="font-size:20px;font-weight:bold;color:#f85149;font-family:'Courier New',monospace;margin-left:4px">—</span>
+    <span style="font-size:12px;color:#8b949e"> s</span>
+    <span id="burn-dur-sub" style="font-size:10px;color:#8b949e;margin-left:6px"></span>
   </div>
   <div id="heat-bar-wrap">
     <div class="bar-track"><div id="heat-bar"></div></div>
@@ -292,7 +297,7 @@ body{padding:10px;padding-bottom:max(10px,env(safe-area-inset-bottom))}
     <span id="k-calib-status" style="font-size:10px;color:#8b949e;flex:1;text-align:right">Startet nach erstem Brennerimpuls · 🎯 = Kalibrierungsphase (10 min)</span>
   </div>
 </div>
-<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.7</div>
+<div class="footer">© Stephan Hostert · GPS-Kalman-Filter · Brennersteuerung <span style="opacity:.4">·</span> v2.8</div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8/hammer.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
@@ -1170,24 +1175,32 @@ function isBaroFresh(){
 
 // Aktualisiert das Kennzeichen neben dem HÖHE-Label. source: 'baro'|'gps'|'baro_stale'|'none'
 function updateAltSource(source){
-  const el = document.getElementById('alt-src');
-  if(!el) return;
+  // Setzt Kennzeichen an HÖHE- UND VARIO-Anzeige. VARIO folgt der HÖHE-Quelle,
+  // weil die App bei aktiver Baro-Bridge auch das Flytec-Vario direkt anzeigt
+  // (isBaroFresh() steuert beide Anzeigen). Sonst kommt das Vario aus dem
+  // Kalman-Filter (basierend auf GPS-Höhen).
+  const setBadge = (el, txt, cls) => {
+    if(!el) return;
+    el.textContent = txt;
+    el.className = 'src-badge' + (cls ? ' '+cls : '');
+    // Alte inline-Styles überschreiben (falls von früheren Versionen gesetzt)
+    el.style.background = '';
+    el.style.color = '';
+  };
+  const alt = document.getElementById('alt-src');
+  const vario = document.getElementById('vario-src');
   if(source==='baro'){
-    el.textContent = 'BARO';
-    el.style.background = '#0c2d0c';
-    el.style.color = '#3fb950';
+    setBadge(alt,   'BARO',   'src-baro');
+    setBadge(vario, 'BARO',   'src-baro');
   } else if(source==='baro_stale'){
-    el.textContent = 'BARO ⚠';
-    el.style.background = '#3d2f0a';
-    el.style.color = '#d29922';
+    setBadge(alt,   'BARO ⚠', 'src-stale');
+    setBadge(vario, 'BARO ⚠', 'src-stale');
   } else if(source==='gps'){
-    el.textContent = 'GPS';
-    el.style.background = '#0c1d2e';
-    el.style.color = '#58a6ff';
+    setBadge(alt,   'GPS',    'src-gps');
+    setBadge(vario, 'KALMAN', 'src-kalman');  // Vario wird aus GPS-Höhen berechnet
   } else {
-    el.textContent = '—';
-    el.style.background = '#30363d';
-    el.style.color = '#8b949e';
+    setBadge(alt,   '—',      '');
+    setBadge(vario, '—',      '');
   }
 }
 
@@ -1388,7 +1401,7 @@ window.stopGPS=function(){
   document.getElementById('badge').style.cssText='font-size:11px;padding:4px 10px;border-radius:12px;background:#161b22;border:1px solid #30363d;color:#8b949e;white-space:nowrap';
   document.getElementById('gps-dot').style.background='#30363d';
   document.getElementById('gps-status').textContent='GPS gestoppt';
-  document.getElementById('heat-panel').style.cssText='border-radius:12px;border:2px solid #30363d;padding:14px;text-align:center;margin-bottom:8px;background:#161b22';
+  document.getElementById('heat-panel').style.cssText='border-radius:12px;border:2px solid #30363d;padding:8px 12px;text-align:center;margin-bottom:8px;background:#161b22';
   document.getElementById('heat-icon').textContent='⬜';
   document.getElementById('heat-txt').textContent='STEUERUNG INAKTIV';
   document.getElementById('heat-txt').style.color='#8b949e';
